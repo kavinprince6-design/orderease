@@ -504,23 +504,60 @@ async function checkChanges() {
   live.busy = false;
   if (live.build === null) {
     live.build = d.build; live.changed = d.changed; live.notif = d.notif;
-    let up = null; try { up = sessionStorage.getItem('oe_updated'); sessionStorage.removeItem('oe_updated'); } catch {}
-    if (up) setTimeout(() => toast('✨ Website updated — see what’s new in the bell'), 1200);
     return;
   }
   if (d.notif !== live.notif) { live.notif = d.notif; refreshBell(true); }
-  if (d.build !== live.build) { try { sessionStorage.setItem('oe_updated', '1'); } catch {} if (!busyNow()) location.reload(); else showUpdateBar(true); return; }
+  if (d.build !== 'dev' && live.build !== 'dev' && d.build !== live.build) { applyUpdate(); return; }
   if (d.changed !== live.changed) {
     live.changed = d.changed;
     if (busyNow()) { showUpdateBar(false); return; }
     if (/#\/(dashboard|orders|catalog|suppliers|reports)?$|#\/orders\/\d+$|^$/.test(location.hash.split('?')[0])) { const y = scrollY; route(); setTimeout(() => scrollTo(0, y), 400); toast('Updated with the latest changes'); }
   }
 }
+// ---------- automatic website update ----------
+// Checks the website files every 30 s (also on the login page). When a new version is deployed the page
+// reloads by itself, staying on the same screen. If someone is in the middle of something (a form being
+// typed, an open window, an order with items), it waits until they are done.
+const ver = { tag: null, pending: false };
+async function assetTag() {
+  const tags = await Promise.all(['app.js', 'styles.css'].map(async (f) => {
+    const r = await fetch(f + '?check=' + Date.now(), { method: 'HEAD', cache: 'no-store' });
+    return r.headers.get('etag') || r.headers.get('last-modified') || r.headers.get('content-length') || '';
+  }));
+  return tags.join('|');
+}
+function typingNow() {
+  const a = document.activeElement;
+  const authTyped = $$('.auth-card input').some((i) => i.value);
+  return authTyped || (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.value && !a.closest('.filters, .log-filters, .search, .rep-ctrl'));
+}
+function applyUpdate() {
+  ver.pending = true;
+  if (busyNow() || typingNow()) { showUpdateBar(true); return; }
+  try { sessionStorage.setItem('oe_updated', String(Date.now())); sessionStorage.setItem('oe_scroll', String(scrollY)); } catch {}
+  location.reload();
+}
+async function checkVersion() {
+  if (document.hidden) return;
+  if (ver.pending) { if (!busyNow() && !typingNow()) applyUpdate(); return; }
+  let t; try { t = await assetTag(); } catch { return; }
+  if (!t.replace(/\|/g, '')) return;
+  if (ver.tag === null) { ver.tag = t; return; }
+  if (t !== ver.tag) applyUpdate();
+}
+setInterval(checkVersion, 30000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checkVersion(); });
+addEventListener('focus', checkVersion);
+checkVersion();
+(() => {   // just reloaded after an update
+  let up = null, y = 0; try { up = sessionStorage.getItem('oe_updated'); y = Number(sessionStorage.getItem('oe_scroll')) || 0; sessionStorage.removeItem('oe_updated'); sessionStorage.removeItem('oe_scroll'); } catch {}
+  if (up && Date.now() - Number(up) < 60000) setTimeout(() => { scrollTo(0, y); toast('✨ Updated to the newest version'); }, 900);
+})();
 function showUpdateBar(reload) {
   if ($('#updbar')) return;
   const bar = document.createElement('div'); bar.id = 'updbar';
-  bar.innerHTML = `<span>${reload ? 'A new version of OrderEase is ready.' : 'New changes were saved on another device.'}</span><button class="btn sm crema">Refresh</button>`;
-  $('button', bar).onclick = () => { bar.remove(); if (reload) location.reload(); else route(); };
+  bar.innerHTML = `<span>${reload ? 'A new version is ready — it will refresh by itself when you finish.' : 'New changes were saved on another device.'}</span><button class="btn sm crema">Refresh now</button>`;
+  $('button', bar).onclick = () => { bar.remove(); if (reload) { ver.pending = false; saveDraft(); try { sessionStorage.setItem('oe_updated', String(Date.now())); } catch {} location.reload(); } else route(); };
   document.body.appendChild(bar);
 }
 setInterval(checkChanges, 15000);

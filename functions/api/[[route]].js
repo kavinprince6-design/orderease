@@ -79,6 +79,7 @@ async function audit(env, username, action, detail, ref = null, rid = null) {
 }
 // Website updates shown in the bell ("What's new"). Add a new entry at the top for each release.
 const RELEASES = [
+  { v: 5, ts: 1793113200, title: 'Updates by itself', text: 'When a new version of OrderEase is published, every open screen refreshes by itself and stays on the same page. If you are in the middle of an order or typing, it waits until you finish.' },
   { v: 4, ts: 1793108400, title: 'Bell, alerts and a better Activity log', text: 'The bell shows alerts (late deliveries, items without a code, orders still waiting) and what staff did. Settings → Activity log has filters, View details and an Excel download. Every page has its own banner, and a little truck drives across when you change page.' },
   { v: 3, ts: 1793107200, title: 'Users and My account', text: 'Settings → Users shows photo, position, role, restaurants and last sign-in. My account: change your name, position, photo and password.' },
   { v: 2, ts: 1793106000, title: 'Moving pictures', text: 'Jeddah delivery scene on the Dashboard, a truck that fills with boxes as you add items, and confetti when an order is received.' },
