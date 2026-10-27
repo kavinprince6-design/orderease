@@ -63,11 +63,79 @@ function sessionCookie(request, token, maxAge) {
   const secure = new URL(request.url).protocol === 'https:' ? '; Secure' : '';
   return `oe_sid=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${secure}`;
 }
-async function audit(env, username, action, detail) {
+// Actions that don't change shared data (open browsers don't need to refresh for these)
+const NO_REFRESH = new Set(['login', 'logout', 'login_failed', 'password_changed', 'profile_saved']);
+// Actions the Admin bell shows when staff do them
+const NOTIFY_ACTIONS = new Set(['order_created', 'order_edited', 'order_received', 'order_cancelled']);
+async function audit(env, username, action, detail, ref = null, rid = null) {
   try {
-    await env.DB.prepare('INSERT INTO audit_log (username, action, detail) VALUES (?, ?, ?)')
-      .bind(username || null, action, detail == null ? null : String(detail).slice(0, 500)).run();
+    const st = [env.DB.prepare('INSERT INTO audit_log (username, action, detail, ref, rid) VALUES (?, ?, ?, ?, ?)')
+      .bind(username || null, action, detail == null ? null : String(detail).slice(0, 1000), ref, rid)];
+    const mark = (k) => env.DB.prepare("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(k, String(Date.now()));
+    if (!NO_REFRESH.has(action)) st.push(mark('changed_at'));
+    if (NOTIFY_ACTIONS.has(action) || (action === 'login_failed' && /^Locked/.test(String(detail || '')))) st.push(mark('notif_at'));
+    await env.DB.batch(st);
   } catch { /* never block a save because of the log */ }
+}
+// Website updates shown in the bell ("What's new"). Add a new entry at the top for each release.
+const RELEASES = [
+  { v: 4, ts: 1793108400, title: 'Bell, alerts and a better Activity log', text: 'The bell shows alerts (late deliveries, items without a code, orders still waiting) and what staff did. Settings → Activity log has filters, View details and an Excel download. Every page has its own banner, and a little truck drives across when you change page.' },
+  { v: 3, ts: 1793107200, title: 'Users and My account', text: 'Settings → Users shows photo, position, role, restaurants and last sign-in. My account: change your name, position, photo and password.' },
+  { v: 2, ts: 1793106000, title: 'Moving pictures', text: 'Jeddah delivery scene on the Dashboard, a truck that fills with boxes as you add items, and confetti when an order is received.' },
+  { v: 1, ts: 1793102400, title: 'OrderEase is live', text: 'Order from every supplier for the 4 restaurants with codes filled in, send by WhatsApp or PDF, and pull daily / monthly / yearly reports.' },
+];
+const SHORT_ACTION = { order_created: 'placed an order', order_edited: 'edited an order', order_received: 'received an order', order_cancelled: 'cancelled an order' };
+async function notifications(env, user, url, method, body) {
+  const key = 'notif_seen_' + user.id, rkey = 'rel_seen_' + user.id;
+  const up = "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = MAX(CAST(value AS INTEGER), CAST(excluded.value AS INTEGER))";
+  if (method === 'POST') {
+    await env.DB.batch([env.DB.prepare(up).bind(key, String(Math.max(0, Number(body.seen) || 0))), env.DB.prepare(up).bind(rkey, String(RELEASES[0].v))]);
+    return json({ ok: true });
+  }
+  const [a, b2] = await env.DB.batch([env.DB.prepare('SELECT value FROM meta WHERE key = ?').bind(key), env.DB.prepare('SELECT value FROM meta WHERE key = ?').bind(rkey)]);
+  const seen = a.results[0] ? Number(a.results[0].value) || 0 : 0;
+  const relSeen = b2.results[0] ? Number(b2.results[0].value) || 0 : 0;
+  const newRel = RELEASES.filter((r) => r.v > relSeen).length;
+  const admin = user.role === 'admin';
+  // Admin: what staff did. Staff: what happened to orders of their restaurants (by other people).
+  const SQL = admin
+    ? `FROM audit_log l LEFT JOIN users u ON lower(u.username) = lower(l.username)
+       WHERE ((l.action IN ('order_created','order_edited','order_received','order_cancelled') AND u.role = 'staff') OR (l.action = 'login_failed' AND l.detail LIKE 'Locked%'))`
+    : `FROM audit_log l LEFT JOIN users u ON lower(u.username) = lower(l.username)
+       WHERE l.action IN ('order_created','order_edited','order_received','order_cancelled') AND lower(l.username) <> lower(?)` + (user.restaurants && user.restaurants.length ? ` AND l.rid IN (${user.restaurants.map(Number).join(',')})` : '');
+  const args = admin ? [] : [user.username];
+  const cnt = await env.DB.prepare(`SELECT COUNT(*) n ${SQL} AND l.id > ?`).bind(...args, seen).first();
+  if (url.searchParams.get('count')) return json({ unread: cnt.n + newRel, seen });
+  const rows = await env.DB.prepare(`SELECT l.id, l.ts, l.username, l.action, l.detail, l.ref, l.rid, u.display_name name, u.photo ${SQL} ORDER BY l.id DESC LIMIT 60`).bind(...args).all();
+  return json({ unread: cnt.n + newRel, seen, relSeen, items: rows.results, releases: RELEASES });
+}
+
+// ---------- Ordering alerts: only things that need action (worked out live, clear themselves when fixed) ----------
+async function alerts(env, user) {
+  const today = localToday(env);
+  const rf = rFilter(user);
+  const out = [];
+  const q = (sql, ...a) => env.DB.prepare(sql).bind(...a, ...rf.args);
+  const [late, dueToday, waiting, nocode, nophone] = await env.DB.batch([
+    q(`${ORDER_SELECT} WHERE o.status = 'ordered' AND o.delivery_date IS NOT NULL AND o.delivery_date < ?${rf.sql} ORDER BY o.delivery_date LIMIT 50`, today),
+    q(`${ORDER_SELECT} WHERE o.status = 'ordered' AND o.delivery_date = ?${rf.sql} ORDER BY o.id LIMIT 50`, today),
+    q(`${ORDER_SELECT} WHERE o.status = 'ordered' AND o.delivery_date IS NULL AND o.order_date <= ?${rf.sql} ORDER BY o.order_date LIMIT 50`, addDays(today, -3)),
+    env.DB.prepare(`SELECT p.id, p.name, p.pack, s.id sid, s.name supplier, s.color FROM products p JOIN suppliers s ON s.id = p.supplier_id
+       WHERE p.active = 1 AND s.active = 1 AND (p.code IS NULL OR p.code = '') ORDER BY s.sort, s.id, p.name LIMIT 200`),
+    env.DB.prepare(`SELECT s.id, s.name, s.color, COUNT(o.id) n FROM suppliers s JOIN orders o ON o.supplier_id = s.id AND o.order_date >= ?
+       WHERE s.active = 1 AND (s.phone IS NULL OR s.phone = '') GROUP BY s.id ORDER BY n DESC`).bind(addDays(today, -30)),
+  ]);
+  const o2 = (o) => ({ id: o.id, no: o.order_no, restaurant: o.restaurant, color: o.restaurant_color, supplier: o.supplier, date: o.order_date, delivery: o.delivery_date });
+  if (late.results.length) out.push({ kind: 'late', sev: 'bad', items: late.results.map(o2) });
+  if (dueToday.results.length) out.push({ kind: 'today', sev: 'info', items: dueToday.results.map(o2) });
+  if (waiting.results.length) out.push({ kind: 'waiting', sev: 'warn', items: waiting.results.map(o2) });
+  const bySup = {};
+  for (const p of nocode.results) (bySup[p.sid] ||= { supplier: p.supplier, color: p.color, sid: p.sid, items: [] }).items.push({ id: p.id, name: p.name, pack: p.pack });
+  for (const g of Object.values(bySup)) out.push({ kind: 'nocode', sev: 'warn', ...g });
+  if (nophone.results.length) out.push({ kind: 'nophone', sev: 'info', items: nophone.results });
+  const order = { bad: 0, warn: 1, info: 2 };
+  out.sort((x, y) => order[x.sev] - order[y.sev]);
+  return json({ today, alerts: out });
 }
 
 // ---------- first-run database setup ----------
@@ -81,6 +149,9 @@ async function ensureDb(env) {
   } catch { have = 0; }
   if (have < DATA_VERSION) {
     await env.DB.batch(SCHEMA.map((s) => env.DB.prepare(s)));
+    // v3: audit log links to the order (ref) and restaurant (rid)
+    try { await env.DB.prepare('ALTER TABLE audit_log ADD COLUMN ref INTEGER').run(); } catch { /* already there */ }
+    try { await env.DB.prepare('ALTER TABLE audit_log ADD COLUMN rid INTEGER').run(); } catch { /* already there */ }
     // v2: optional position + photo on user profiles
     try { await env.DB.prepare('ALTER TABLE users ADD COLUMN position TEXT').run(); } catch { /* already there */ }
     try { await env.DB.prepare('ALTER TABLE users ADD COLUMN photo TEXT').run(); } catch { /* already there */ }
@@ -360,6 +431,13 @@ export async function onRequest(context) {
     }
 
     if (a === 'dashboard') return dashboard(env, user);
+    if (a === 'alerts' && method === 'GET') return alerts(env, user);
+    if (a === 'notifications') return notifications(env, user, url, method, body);
+    if (a === 'changes') {
+      const { results } = await env.DB.prepare("SELECT key, value FROM meta WHERE key IN ('changed_at', 'notif_at')").all();
+      const m = Object.fromEntries(results.map((r) => [r.key, r.value]));
+      return json({ build: env.CF_PAGES_COMMIT_SHA || 'dev', changed: m.changed_at || '0', notif: m.notif_at || '0' });
+    }
     if (a === 'reports') return report(env, user, url);
 
     // ----- settings -----
@@ -566,7 +644,8 @@ export async function onRequest(context) {
         const oid = r.meta.last_row_id;
         await env.DB.batch(items.map((it) => env.DB.prepare('INSERT INTO order_items (order_id, product_id, code, name, pack, unit, qty, price, sort) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
           .bind(oid, it.product_id, it.code, it.name, it.pack, it.unit, it.qty, it.price, it.sort)));
-        await audit(env, user.username, 'order_created', `${no} · ${items.length} items`);
+        const nm = await env.DB.prepare('SELECT (SELECT name FROM restaurants WHERE id = ?) r, (SELECT name FROM suppliers WHERE id = ?) s').bind(rid, sid).first();
+        await audit(env, user.username, 'order_created', `${no} · ${nm.r} → ${nm.s} · ${items.length} item${items.length > 1 ? 's' : ''}`, oid, rid);
         return json({ ok: true, id: oid, order_no: no });
       }
       if (method === 'PUT' && b) {
@@ -575,6 +654,14 @@ export async function onRequest(context) {
         if (o.status !== 'ordered' && !admin) return err('Only an Admin can change an order that is received or cancelled.', 403);
         const items = cleanItems(body.items);
         if (!items.length) return err('Add at least one item with a quantity.');
+        const { results: before } = await env.DB.prepare('SELECT product_id, name, qty FROM order_items WHERE order_id = ?').bind(o.id).all();
+        const k = (x) => x.product_id ? 'p' + x.product_id : 'n' + String(x.name).toLowerCase();
+        const oldMap = new Map(before.map((x) => [k(x), x])), newMap = new Map(items.map((x) => [k(x), x]));
+        const diff = [];
+        for (const [key, n] of newMap) { const old = oldMap.get(key); if (!old) diff.push(`+ ${n.name} ${n.qty}`); else if (Number(old.qty) !== Number(n.qty)) diff.push(`${n.name} ${old.qty} → ${n.qty}`); }
+        for (const [key, old] of oldMap) if (!newMap.has(key)) diff.push(`− ${old.name}`);
+        if ((o.delivery_date || '') !== (isDate(body.delivery_date) ? body.delivery_date : '')) diff.push(`delivery ${o.delivery_date || 'none'} → ${body.delivery_date || 'none'}`);
+        if ((o.note || '') !== (str(body.note, 1000) || '')) diff.push('note changed');
         const st = [
           env.DB.prepare('UPDATE orders SET delivery_date = ?, note = ?, total = ?, items_count = ?, order_date = ? WHERE id = ?')
             .bind(isDate(body.delivery_date) ? body.delivery_date : null, str(body.note, 1000) || null, orderTotal(items), items.length,
@@ -584,7 +671,7 @@ export async function onRequest(context) {
             .bind(o.id, it.product_id, it.code, it.name, it.pack, it.unit, it.qty, it.price, it.sort)),
         ];
         await env.DB.batch(st);
-        await audit(env, user.username, 'order_edited', `${o.order_no} · ${items.length} items`);
+        await audit(env, user.username, 'order_edited', `${o.order_no} · ${diff.length ? diff.join(' · ') : 'no changes'}`, o.id, o.restaurant_id);
         return json({ ok: true });
       }
       if (method === 'POST' && b && c === 'status') {
@@ -595,17 +682,17 @@ export async function onRequest(context) {
         if (o.status !== 'ordered' && !admin) return err('Only an Admin can change this order now.', 403);
         await env.DB.prepare('UPDATE orders SET status = ?, received_at = ?, received_by = ? WHERE id = ?')
           .bind(s, s === 'received' ? now() : null, s === 'received' ? user.name : null, o.id).run();
-        await audit(env, user.username, 'order_' + s, o.order_no);
+        await audit(env, user.username, 'order_' + s, o.order_no, o.id, o.restaurant_id);
         return json({ ok: true });
       }
       if (method === 'DELETE' && b) {
         const no = needAdmin(); if (no) return no;
-        const o = await env.DB.prepare('SELECT order_no FROM orders WHERE id = ?').bind(Number(b)).first();
+        const o = await env.DB.prepare('SELECT order_no, restaurant_id FROM orders WHERE id = ?').bind(Number(b)).first();
         await env.DB.batch([
           env.DB.prepare('DELETE FROM order_items WHERE order_id = ?').bind(Number(b)),
           env.DB.prepare('DELETE FROM orders WHERE id = ?').bind(Number(b)),
         ]);
-        await audit(env, user.username, 'order_deleted', o && o.order_no);
+        await audit(env, user.username, 'order_deleted', o && o.order_no, null, o && o.restaurant_id);
         return json({ ok: true });
       }
     }
@@ -651,7 +738,8 @@ export async function onRequest(context) {
 
     if (a === 'audit' && method === 'GET') {
       const no = needAdmin(); if (no) return no;
-      const { results } = await env.DB.prepare('SELECT * FROM audit_log ORDER BY id DESC LIMIT 300').all();
+      const { results } = await env.DB.prepare(`SELECT l.*, u.display_name name, u.photo FROM audit_log l LEFT JOIN users u ON lower(u.username) = lower(l.username)
+        ORDER BY l.id DESC LIMIT 1000`).all();
       return json({ log: results });
     }
 

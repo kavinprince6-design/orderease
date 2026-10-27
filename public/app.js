@@ -30,6 +30,9 @@ const activeSup = () => state.boot.suppliers.filter((s) => s.active);
 const safeName = (s) => String(s).replace(/[\\/:*?"<>|]+/g, '-').trim();
 
 const ICON = {
+  bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
+  sliders: '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>',
+  eye: '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
   home: '<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   list: '<path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/>',
@@ -131,6 +134,7 @@ async function loadBoot() {
   state.boot = await api('bootstrap');
   state.products = {};
   idle.start(state.boot.user.idle || 1800);
+  live.build = null; checkChanges(); refreshBell();
 }
 window.addEventListener('hashchange', () => { if (state.boot) route(); });
 
@@ -246,10 +250,11 @@ function shell(active, content) {
       <div class="brand-row">${markHtml()}<div><div class="wordmark">OrderEase<b>.</b></div><div class="tagline">${esc(state.boot.settings.company)}</div></div></div>
       <a class="nav cta" href="#/new">${ic('plus')} New order</a>
       ${NAV.map((n) => `<a class="nav ${active === n.h ? 'on' : ''}" href="#/${n.h}">${ic(n.i)}${n.t}</a>`).join('')}
+      <button class="bell-link" data-bell>${ic('bell')}<span>Notifications</span><span class="bell-badge red" data-alert-n hidden></span><span class="bell-badge" data-bell-n hidden></span></button>
       <div class="side-foot"><a href="#/settings/account" title="My account">${avatarHtml(u.name, u.photo, 'mini')}</a><div class="who"><b>${esc(u.name)}</b><span>${esc(u.position || (u.role === 'admin' ? 'Admin' : 'Staff'))}</span></div>
         <button id="lo" title="Log out" aria-label="Log out">${ic('out')}</button></div>
     </aside>
-    <header class="topbar"><div class="brand-row">${markHtml()}<div class="wordmark">OrderEase<b>.</b></div></div><button id="lo2">${ic('out')} Log out</button></header>
+    <header class="topbar"><div class="brand-row">${markHtml()}<div class="wordmark">OrderEase<b>.</b></div></div><div style="display:flex;gap:8px"><button class="bell-m" data-bell aria-label="Notifications">${ic('bell')}<span class="bell-badge red" data-alert-n hidden></span><span class="bell-badge" data-bell-n hidden></span></button><button id="lo2">${ic('out')} Log out</button></div></header>
     <main class="main" id="main">${content}</main>
     <nav class="bottomnav">
       <a href="#/dashboard" class="${active === 'dashboard' ? 'on' : ''}">${ic('home')}Home</a>
@@ -261,10 +266,15 @@ function shell(active, content) {
   </div>`;
   $('#lo').onclick = () => logout();
   $('#lo2').onclick = () => logout();
+  $$('[data-bell]').forEach((b) => b.onclick = () => openBell());
+  paintBell();
   window.scrollTo(0, 0);
   return $('#main');
 }
-function pageHead(title, sub, actions = '', eyebrow = '') {
+function pageHead(title, sub, actions = '', eyebrow = '', deco = null) {
+  if (deco) return `<div class="pbanner pb-${deco.kind}" style="--pc:${deco.color || '#D7A46E'}">${decoLayer(deco)}
+    <div class="pb-title">${deco.logo || `<span class="pb-ic">${ic(deco.icon || 'box')}</span>`}<div>${eyebrow ? `<div class="eyebrow">${eyebrow}</div>` : ''}<h1>${title}</h1>${sub ? `<p class="sub">${sub}</p>` : ''}</div></div>
+    <div class="actions">${actions}</div></div>`;
   return `<div class="page-head"><div>${eyebrow ? `<div class="eyebrow">${eyebrow}</div>` : ''}<h1>${title}</h1>${sub ? `<p class="sub">${sub}</p>` : ''}</div><div class="actions">${actions}</div></div>`;
 }
 const loading = () => '<div class="card card-pad muted">Loading…</div>';
@@ -387,6 +397,234 @@ function confetti(from) {
   document.body.appendChild(layer); setTimeout(() => layer.remove(), 1300);
 }
 
+
+// ================= RESTAURANT LOGOS & PAGE BANNERS =================
+const PLANE_MARK = `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" transform="rotate(45 12 12)" d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z"/></svg>`;
+function restKind(r) { const n = String(r && r.name || '').toLowerCase(); return /plane/.test(n) ? 'plane' : /daily|edition/.test(n) ? 'edition' : /bupa/.test(n) ? 'bupa' : 'rest'; }
+function restLogo(r, size = '') {
+  if (!r) return '';
+  const k = restKind(r), cls = `rlogo ${size}`;
+  if (k === 'plane') return `<span class="${cls} plane" style="--c:${r.color}" title="${esc(r.name)}">${PLANE_MARK}</span>`;
+  if (k === 'edition') return `<img class="${cls}" src="img/logo-round.png" alt="" title="${esc(r.name)}">`;
+  if (k === 'bupa') return `<img class="${cls} ghaya" src="img/ghaya.png" alt="" title="${esc(r.name)}">`;
+  return `<span class="${cls} txt" style="--c:${r.color}" title="${esc(r.name)}">${esc(r.short || initials(r.name))}</span>`;
+}
+const CUP = `<svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 28h34v8a17 17 0 0 1-34 0z"/><path d="M46 31h4a6 6 0 0 1 0 12h-5"/><path class="i-steam" d="M22 22c-3-4 3-6 0-10"/><path class="i-steam s2" d="M30 22c-3-4 3-6 0-10"/><path class="i-steam s3" d="M38 22c-3-4 3-6 0-10"/></svg>`;
+function decoLayer(d) {
+  const k = d.kind;
+  if (k === 'plane') return `<div class="deco-layer" aria-hidden="true"><i class="dc-cloud a"></i><i class="dc-cloud b"></i><i class="dc-cloud c"></i>
+    <svg class="dc-path" viewBox="0 0 600 80" preserveAspectRatio="none"><path d="M0 62 C 150 70, 260 20, 600 26"/></svg><span class="dc-plane">${PLANE_MARK}</span></div>`;
+  if (k === 'edition') return `<div class="deco-layer" aria-hidden="true"><span class="dc-cup">${CUP}</span><i class="dc-bean b1"></i><i class="dc-bean b2"></i><i class="dc-bean b3"></i><i class="dc-bean b4"></i></div>`;
+  if (k === 'bupa') return `<div class="deco-layer" aria-hidden="true"><svg class="dc-star" viewBox="0 0 100 100"><path d="M50 4l13 33 33 13-33 13-13 33-13-33L4 50l33-13z"/><rect x="26" y="26" width="48" height="48" transform="rotate(45 50 50)"/><circle cx="50" cy="50" r="8"/></svg><i class="dc-shine"></i></div>`;
+  if (k === 'orders') return `<div class="deco-layer" aria-hidden="true"><svg class="dc-road" viewBox="0 0 400 80" preserveAspectRatio="none"><path d="M0 64 C 120 70, 220 30, 400 34"/></svg><span class="dc-truck">${TRUCK}</span>
+    <svg class="dc-receipt" viewBox="0 0 40 52" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 3h28v46l-5-4-5 4-4-4-4 4-5-4-5 4z"/><path class="rl r1" d="M12 14h16"/><path class="rl r2" d="M12 22h16"/><path class="rl r3" d="M12 30h10"/></svg></div>`;
+  if (k === 'catalog') return `<div class="deco-layer" aria-hidden="true"><div class="dc-boxes"><i class="bx b1"></i><i class="bx b2"></i><i class="bx b3"></i></div>
+    <svg class="dc-barcode" viewBox="0 0 90 40"><path d="M4 4v32M10 4v32M14 4v32M22 4v32M26 4v32M32 4v32M40 4v32M44 4v32M52 4v32M56 4v32M62 4v32M70 4v32M74 4v32M82 4v32M86 4v32"/></svg><i class="dc-scan"></i></div>`;
+  if (k === 'suppliers') return `<div class="deco-layer" aria-hidden="true"><svg class="dc-house" viewBox="0 0 80 56" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"><path d="M4 54V22L40 6l36 16v32"/><path d="M18 54V32h44v22M18 39h44M18 46h44"/></svg><span class="dc-truck out">${TRUCK}</span><i class="dc-dash"></i></div>`;
+  if (k === 'reports') return `<div class="deco-layer" aria-hidden="true"><div class="dc-bars"><i style="--h:40%"></i><i style="--h:68%"></i><i style="--h:52%"></i><i style="--h:86%"></i><i style="--h:64%"></i></div>
+    <svg class="dc-line" viewBox="0 0 120 50" preserveAspectRatio="none"><path d="M2 42 L30 30 L58 34 L86 14 L118 8"/></svg></div>`;
+  if (k === 'settings') return `<div class="deco-layer" aria-hidden="true"><svg class="dc-gear g1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">${ICON.gear}</svg><svg class="dc-gear g2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">${ICON.gear}</svg></div>`;
+  return `<div class="deco-layer" aria-hidden="true"><span class="dc-cartbob">${ic('cart')}</span><i class="dc-dot d1"></i><i class="dc-dot d2"></i><i class="dc-dot d3"></i></div>`;
+}
+
+// ---- little truck that drives across the top when you change page ----
+function flyby() {
+  if (calm()) return;
+  let f = $('#flyby');
+  if (!f) {
+    f = document.createElement('div'); f.id = 'flyby'; f.setAttribute('aria-hidden', 'true');
+    f.innerHTML = `<div class="fb-craft">${TRUCK}</div>`;
+    f.addEventListener('animationend', (e) => { if (e.target.classList.contains('fb-craft')) f.classList.remove('go'); });
+    document.body.appendChild(f);
+  }
+  if (f.classList.contains('go')) return;
+  void f.offsetWidth; f.classList.add('go');
+}
+document.addEventListener('click', (e) => {
+  const a = e.target.closest && e.target.closest('.nav, .bottomnav a');
+  if (a && !a.classList.contains('on')) flyby();
+});
+
+// ================= LIVE UPDATES (someone else saved) =================
+const live = { build: null, changed: null, notif: null, busy: false };
+const busyNow = () => !!$('#modal-root').innerHTML.trim() || (state.ob && state.ob.items && state.ob.items.size > 0 && /#\/(new|edit)/.test(location.hash));
+async function checkChanges() {
+  if (!state.boot || document.hidden || live.busy) return;
+  live.busy = true;
+  let d; try { d = await api('changes'); } catch { live.busy = false; return; }
+  live.busy = false;
+  if (live.build === null) {
+    live.build = d.build; live.changed = d.changed; live.notif = d.notif;
+    let up = null; try { up = sessionStorage.getItem('oe_updated'); sessionStorage.removeItem('oe_updated'); } catch {}
+    if (up) setTimeout(() => toast('✨ Website updated — see what’s new in the bell'), 1200);
+    return;
+  }
+  if (d.notif !== live.notif) { live.notif = d.notif; refreshBell(true); }
+  if (d.build !== live.build) { try { sessionStorage.setItem('oe_updated', '1'); } catch {} if (!busyNow()) location.reload(); else showUpdateBar(true); return; }
+  if (d.changed !== live.changed) {
+    live.changed = d.changed;
+    if (busyNow()) { showUpdateBar(false); return; }
+    if (/#\/(dashboard|orders|catalog|suppliers|reports)?$|#\/orders\/\d+$|^$/.test(location.hash.split('?')[0])) { const y = scrollY; route(); setTimeout(() => scrollTo(0, y), 400); toast('Updated with the latest changes'); }
+  }
+}
+function showUpdateBar(reload) {
+  if ($('#updbar')) return;
+  const bar = document.createElement('div'); bar.id = 'updbar';
+  bar.innerHTML = `<span>${reload ? 'A new version of OrderEase is ready.' : 'New changes were saved on another device.'}</span><button class="btn sm crema">Refresh</button>`;
+  $('button', bar).onclick = () => { bar.remove(); if (reload) location.reload(); else route(); };
+  document.body.appendChild(bar);
+}
+setInterval(checkChanges, 15000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checkChanges(); });
+
+// ================= BELL: alerts + activity + what's new =================
+const bell = { unread: 0, alerts: null, keys: null };
+function alertCopy(a) {
+  const n = a.items ? a.items.length : 0, s = n > 1 ? 's' : '';
+  if (a.kind === 'late') return { emoji: '🔴', title: `${n} delivery${n > 1 ? ' deliveries' : ''} overdue`, text: 'The delivery date has passed but these orders are not marked as received. Call the supplier, or tap the order and Mark as received.', btn: 'Open orders', go: '#/orders' };
+  if (a.kind === 'today') return { emoji: '🚚', title: `${n} delivery${n > 1 ? ' deliveries' : ''} expected today`, text: 'When the goods arrive, check them against the order and tap Mark as received.', btn: 'Open orders', go: '#/orders' };
+  if (a.kind === 'waiting') return { emoji: '⏳', title: `${n} order${s} waiting 3+ days`, text: 'These orders have no delivery date and are still waiting. Check with the supplier.', btn: 'Open orders', go: '#/orders' };
+  if (a.kind === 'nocode') return { emoji: '🏷️', title: `${a.supplier}: ${n} item${s} without a code`, text: 'The supplier only sees the name for these items. Add the code from the catalog book.', btn: 'Add codes', go: '#/catalog', sid: a.sid };
+  return { emoji: '📱', title: `${n} supplier${s} without a WhatsApp number`, text: 'Add the number so the WhatsApp button opens their chat directly.', btn: 'Open suppliers', go: '#/suppliers' };
+}
+function alertCard(a) {
+  const c = alertCopy(a), max = 5;
+  const line = (x) => a.kind === 'nocode' ? `<li><b>${esc(x.name)}</b><span>${esc(x.pack || '')}</span></li>`
+    : a.kind === 'nophone' ? `<li><b>${esc(x.name)}</b><span>${x.n} order${x.n > 1 ? 's' : ''} in 30 days</span></li>`
+    : `<li><a href="#/orders/${x.id}" data-close-modal><b class="mono">${esc(x.no)}</b></a><span><span class="dot" style="--c:${x.color}"></span> ${esc(x.restaurant)} → ${esc(x.supplier)}${x.delivery ? ` · due ${fmtDate(x.delivery)}` : ` · ordered ${fmtDate(x.date)}`}</span></li>`;
+  return `<div class="al-card sev-${a.sev}"><div class="al-h"><span class="al-t">${c.emoji} ${esc(c.title)}</span></div>
+    <div class="al-b"><p>${c.text}</p><ul class="al-items">${(a.items || []).slice(0, max).map(line).join('')}${n(a) > max ? `<li class="al-more">+ ${n(a) - max} more</li>` : ''}</ul>
+    <a class="btn al-go" href="${c.go}" data-close-modal ${c.sid ? `data-cat-sid="${c.sid}"` : ''}>${c.btn}</a></div>
+    <div class="al-f">Automatic check · updates by itself</div></div>`;
+}
+const n = (a) => (a.items ? a.items.length : 0);
+function paintBell() {
+  $$('[data-bell-n]').forEach((el) => { el.hidden = !bell.unread; el.textContent = bell.unread > 99 ? '99+' : bell.unread; });
+  const all = bell.alerts ? bell.alerts.alerts : [];
+  $$('[data-alert-n]').forEach((el) => { el.hidden = !all.length; el.textContent = all.length; });
+  const strip = $('#alert-strip');
+  if (strip) {
+    const urgent = all.filter((x) => x.sev !== 'info' || x.kind === 'today');
+    strip.hidden = !urgent.length;
+    if (urgent.length) strip.innerHTML = `<span class="as-ico">⚠️</span><span><b>${urgent.length} alert${urgent.length > 1 ? 's' : ''}</b> need${urgent.length > 1 ? '' : 's'} attention — ${urgent.slice(0, 2).map((x) => esc(alertCopy(x).title)).join(' · ')}${urgent.length > 2 ? ' …' : ''}</span><button class="btn sm crema" data-bell-alerts>View</button>`;
+    const b = $('[data-bell-alerts]', strip); if (b) b.onclick = () => openBell('alerts');
+  }
+}
+async function refreshBell(announce) {
+  if (!state.boot) return;
+  try {
+    const before = bell.unread;
+    const [d, al] = await Promise.all([api('notifications?count=1'), api('alerts')]);
+    bell.unread = d.unread; bell.alerts = al;
+    const keys = al.alerts.map((x) => x.kind + ':' + (x.sid || '') + ':' + n(x));
+    const fresh = bell.keys ? al.alerts.filter((x, i) => !bell.keys.includes(keys[i]) && x.sev !== 'info') : [];
+    bell.keys = keys;
+    paintBell();
+    if (fresh.length) toast(`⚠️ ${alertCopy(fresh[0]).title} — tap the bell`);
+    else if (announce && d.unread > before) toast(`🔔 ${d.unread - before} new update${d.unread - before > 1 ? 's' : ''} — tap the bell`);
+  } catch { /* offline */ }
+}
+const NOTE_VERB = { order_created: 'placed', order_edited: 'edited', order_received: 'received', order_cancelled: 'cancelled' };
+async function openBell(tab) {
+  let d, al; try { [d, al] = await Promise.all([api('notifications'), api('alerts')]); } catch (e) { return toast(e.message, true); }
+  bell.alerts = al;
+  if (typeof tab !== 'string') tab = al.alerts.length ? 'alerts' : 'activity';
+  const seen = d.seen, maxId = d.items.reduce((m, x) => Math.max(m, x.id), 0);
+  const itemHTML = (x) => {
+    const isNew = x.id > seen, [no, ...rest] = String(x.detail || '').split(' · ');
+    if (x.action === 'login_failed') return `<div class="nt warn ${isNew ? 'new' : ''}"><span class="nt-ico">${ic('lock')}</span><div class="nt-b"><div class="nt-t"><b>${esc(x.name || x.username)}</b>’s account was locked${isNew ? ' <span class="nt-dot">new</span>' : ''}</div><div class="nt-s">Too many wrong passwords. Unlock it in Settings → Users if needed.</div><div class="nt-time">${fmtTs(x.ts)}</div></div></div>`;
+    return `<div class="nt ${isNew ? 'new' : ''} act-${x.action}">${avatarHtml(x.name || x.username, x.photo)}
+      <div class="nt-b"><div class="nt-t"><b>${esc(x.name || x.username || 'Someone')}</b> ${NOTE_VERB[x.action] || x.action} order ${x.ref ? `<a href="#/orders/${x.ref}" data-close-modal class="mono">${esc(no)}</a>` : `<span class="mono">${esc(no)}</span>`}${isNew ? ' <span class="nt-dot">new</span>' : ''}</div>
+      ${rest.length ? `<div class="nt-s">${esc(rest.join(' · '))}</div>` : ''}<div class="nt-time">${fmtTs(x.ts)}</div></div></div>`;
+  };
+  const rel = (d.releases || []).map((r) => ({ ...r, isNew: r.v > (d.relSeen || 0) }));
+  const relHTML = (r) => `<div class="nt sys ${r.isNew ? 'new' : ''}"><span class="nt-ico sys">✨</span><div class="nt-b"><div class="nt-t">Website updated — <b>${esc(r.title)}</b>${r.isNew ? ' <span class="nt-dot">new</span>' : ''}</div><div class="nt-s">${esc(r.text)}</div><div class="nt-time">${fmtTs(r.ts)}</div></div></div>`;
+  const merged = [...d.items.map((x) => ({ x, ts: x.ts })), ...rel.map((r) => ({ r, ts: r.ts }))].sort((a, b) => b.ts - a.ts);
+  const list = merged.length ? merged.map((m) => (m.r ? relHTML(m.r) : itemHTML(m.x))).join('') : `<div class="empty">${EMPTY_BOX}<b>Nothing yet</b>Orders placed by ${isAdmin() ? 'staff' : 'your team'} will show here.</div>`;
+  const newCount = d.items.filter((x) => x.id > seen).length + rel.filter((r) => r.isNew).length;
+  const alertList = al.alerts.length ? al.alerts.map(alertCard).join('')
+    : `<div class="empty al-empty">${EMPTY_BOX}<b>All good ✓</b>Nothing needs your attention right now.<small>Checks: overdue deliveries · deliveries today · orders waiting 3+ days · items without a code · suppliers without WhatsApp</small></div>`;
+  const markSeen = () => { if (newCount) { api('notifications', { method: 'POST', body: { seen: maxId } }).catch(() => {}); bell.unread = 0; paintBell(); } };
+  const m = modal({ title: 'Notifications', wide: true, body: `
+    <div class="bell-tabs" role="tablist"><button data-bt="alerts" class="${tab === 'alerts' ? 'on' : ''}">⚠️ Alerts${al.alerts.length ? ` <span class="bt-n red">${al.alerts.length}</span>` : ''}</button>
+      <button data-bt="activity" class="${tab === 'activity' ? 'on' : ''}">🕘 Activity${newCount ? ` <span class="bt-n">${newCount}</span>` : ''}</button></div>
+    <div data-bp="alerts" ${tab === 'alerts' ? '' : 'hidden'}><div class="al-list">${alertList}</div></div>
+    <div data-bp="activity" ${tab === 'activity' ? '' : 'hidden'}><p class="bt-help">${isAdmin() ? 'What staff did' : 'What your team did'} and website updates — newest first.</p><div class="nt-list">${list}</div></div>`,
+    foot: `${isAdmin() ? '<a class="btn ghost" href="#/settings/log" data-close-modal>Activity log</a>' : ''}<button class="btn crema" data-close>Close</button>` });
+  if (tab === 'activity') markSeen();
+  $$('[data-bt]', m).forEach((b) => b.onclick = () => {
+    $$('[data-bt]', m).forEach((x) => x.classList.toggle('on', x === b));
+    $$('[data-bp]', m).forEach((p) => { p.hidden = p.dataset.bp !== b.dataset.bt; });
+    if (b.dataset.bt === 'activity') markSeen();
+  });
+  $$('[data-close-modal]', m).forEach((a) => a.addEventListener('click', () => { if (a.dataset.catSid) cat.sid = Number(a.dataset.catSid); closeModal(); }));
+}
+
+// ================= ACTIVITY LOG =================
+const LOG_LABEL = { login: 'Signed in', logout: 'Logged out', login_failed: 'Failed sign-in', setup: 'First setup', password_changed: 'Changed password', profile_saved: 'Updated profile',
+  order_created: 'Placed order', order_edited: 'Edited order', order_received: 'Received order', order_cancelled: 'Cancelled order', order_ordered: 'Re-opened order', order_deleted: 'Deleted order',
+  product_added: 'Added item', product_saved: 'Edited item', product_hidden: 'Hid item', product_deleted: 'Deleted item', products_imported: 'Imported Excel',
+  supplier_added: 'Added supplier', supplier_saved: 'Edited supplier', restaurant_added: 'Added restaurant', restaurant_saved: 'Edited restaurant',
+  user_added: 'Added user', user_saved: 'Edited user', settings_saved: 'Changed settings' };
+const LOG_TYPES = [['', 'All actions'], ['orders', 'Orders'], ['order_created', 'Placed order'], ['order_received', 'Received order'], ['order_edited', 'Edited order'], ['order_cancelled', 'Cancelled order'],
+  ['catalog', 'Catalog & suppliers'], ['sign', 'Sign in / out'], ['login_failed', 'Failed sign-in'], ['settings', 'Settings & users']];
+const LOG_ICON = (a) => /^order_/.test(a) ? 'list' : /^product|supplier/.test(a) ? 'box' : /login|logout|password|setup/.test(a) ? 'lock' : 'gear';
+async function tabLog(el) {
+  const { log } = await api('audit');
+  const users = [...new Map(log.filter((l) => l.username).map((l) => [l.username.toLowerCase(), l.name || l.username])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  const f = { user: '', type: '', rest: '', days: '', hideSign: false };
+  const sel = (id, opts, aria) => `<select class="select lf-sel" id="${id}" aria-label="${aria}">${opts.map(([v, t]) => `<option value="${esc(v)}">${esc(t)}</option>`).join('')}</select>`;
+  el.innerHTML = `<div class="card"><div class="log-filters">
+      <div class="lf-row">${ic('sliders')}
+        ${sel('lf-user', [['', 'Everyone'], ...users], 'User')}${sel('lf-type', LOG_TYPES, 'Action')}
+        ${sel('lf-rest', [['', 'All restaurants'], ...state.boot.restaurants.map((r) => [String(r.id), r.name])], 'Restaurant')}
+        ${sel('lf-days', [['', 'Any time'], ['1', 'Today'], ['7', 'Last 7 days'], ['30', 'Last 30 days']], 'When')}
+        <label class="check"><input type="checkbox" id="lf-hide"> Hide sign in / out</label><span style="flex:1"></span>
+        <button class="btn ghost sm" id="lf-xlsx" type="button">${ic('excel')} Excel</button></div>
+      <div class="hint" id="lf-count" style="margin-top:8px"></div></div>
+    <div class="table-wrap"><table class="t log-t"><thead><tr><th>When</th><th>User</th><th>Action</th><th class="hide-sm">Details</th><th class="r">View</th></tr></thead><tbody id="lf-body"></tbody></table></div></div>
+    <p class="hint" style="margin-top:10px">Shows the latest 1,000 events. “View details” shows the whole order and what was changed.</p>`;
+  const typeOk = (l) => !f.type ? true : f.type === 'orders' ? /^order_/.test(l.action) : f.type === 'sign' ? ['login', 'logout'].includes(l.action)
+    : f.type === 'catalog' ? /^(product|supplier)/.test(l.action) : f.type === 'settings' ? /^(user_|restaurant_|settings_|password_|profile_|setup)/.test(l.action) : l.action === f.type;
+  const today0 = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime() / 1000; })();
+  const filtered = () => log.filter((l) => (!f.user || (l.username || '').toLowerCase() === f.user) && typeOk(l) && (!f.rest || String(l.rid) === f.rest)
+    && (!f.days || l.ts >= today0 - (Number(f.days) - 1) * 86400) && (!f.hideSign || !['login', 'logout'].includes(l.action)));
+  const paint = () => {
+    const rows = filtered();
+    $('#lf-body', el).innerHTML = rows.map((l) => `<tr class="${l.action === 'login_failed' ? 'warn-row' : ''}"><td class="muted" style="white-space:nowrap;font-size:13px">${fmtTs(l.ts)}</td>
+      <td><div class="u-cell">${avatarHtml(l.name || l.username || '?', l.photo, 'mini')}<b style="font-size:14px">${esc(l.name || l.username || '—')}</b></div></td>
+      <td><span class="lg-act a-${(l.action || '').split('_')[0]} ${l.action === 'login_failed' ? 'bad' : ''}">${ic(LOG_ICON(l.action))}${esc(LOG_LABEL[l.action] || l.action)}</span></td>
+      <td class="hide-sm muted" style="font-size:13px;max-width:420px">${esc(l.detail || '')}</td>
+      <td class="r">${l.ref ? `<button class="btn ghost sm" data-log="${l.id}">${ic('eye')} View details</button>` : ''}</td></tr>`).join('')
+      || `<tr><td colspan="5"><div class="empty">${EMPTY_BOX}<b>No activity matches these filters</b></div></td></tr>`;
+    $('#lf-count', el).textContent = rows.length === log.length ? `${log.length} events` : `Showing ${rows.length} of ${log.length} events`;
+  };
+  [['lf-user', 'user'], ['lf-type', 'type'], ['lf-rest', 'rest'], ['lf-days', 'days']].forEach(([id, k]) => { $('#' + id, el).onchange = (e) => { f[k] = e.target.value; paint(); }; });
+  $('#lf-hide', el).onchange = (e) => { f.hideSign = e.target.checked; paint(); };
+  $('#lf-body', el).onclick = (e) => { const b = e.target.closest('[data-log]'); if (b) showLogDetail(log.find((l) => l.id === Number(b.dataset.log))); };
+  $('#lf-xlsx', el).onclick = () => act($('#lf-xlsx', el), async () => {
+    const wb = needExcel(); wb.creator = APP_NAME;
+    const ws = wb.addWorksheet('Activity log');
+    ws.columns = [{ header: 'When', width: 20 }, { header: 'User', width: 22 }, { header: 'Username', width: 14 }, { header: 'Action', width: 18 }, { header: 'Restaurant', width: 20 }, { header: 'Details', width: 90 }];
+    filtered().forEach((l) => ws.addRow([fmtTs(l.ts), l.name || l.username || '', l.username || '', LOG_LABEL[l.action] || l.action, l.rid ? (restById(l.rid)?.name || '') : '', l.detail || '']));
+    styleHeader(ws);
+    await saveWb(wb, `OrderEase activity log - ${today()}.xlsx`); toast('Excel downloaded');
+  });
+  paint();
+}
+async function showLogDetail(l) {
+  if (!l || !l.ref) return;
+  let d; try { d = await api('orders/' + l.ref); } catch { return toast('That order was deleted.', true); }
+  const o = d.order, [, ...changes] = String(l.detail || '').split(' · ');
+  const m = modal({ title: `${LOG_LABEL[l.action] || l.action} · ${o.order_no}`, wide: true, body: `
+    <p style="margin-top:0"><b>${esc(l.name || l.username)}</b> · ${fmtTs(l.ts)} · ${restLogo(restById(o.restaurant_id), 'xs')} ${esc(o.restaurant)} → ${esc(o.supplier)} · <span class="pill ${o.status}">${o.status}</span></p>
+    ${l.action === 'order_edited' && changes.length ? `<div class="ld-list">${changes.map((c) => `<div class="ld-item">${esc(c).replace('→', '→ <b>').replace(/$/, c.includes('→') ? '</b>' : '')}</div>`).join('')}</div><div class="label" style="margin:14px 0 6px">The order now</div>` : ''}
+    <div class="card"><div class="table-wrap"><table class="t"><thead><tr><th>Code</th><th>Item</th><th class="r">Qty</th></tr></thead><tbody>
+    ${d.items.map((it) => `<tr><td>${codeHtml(it.code)}</td><td>${esc(it.name)} <span class="muted">${esc(it.pack || '')}</span></td><td class="r num"><b>${fmtQty(it.qty)}</b> ${esc(it.unit || '')}</td></tr>`).join('')}</tbody></table></div></div>`,
+    foot: `<a class="btn ghost" href="#/orders/${o.id}" data-close-modal>Open order</a><button class="btn crema" data-close>Close</button>` });
+  $$('[data-close-modal]', m).forEach((a) => a.addEventListener('click', closeModal));
+}
+
 // ================= DASHBOARD =================
 async function pageDashboard() {
   const u = state.boot.user;
@@ -401,7 +639,7 @@ async function pageDashboard() {
     const max14 = Math.max(1, ...d.days.map((x) => x.total || 0));
     const days = Array.from({ length: 14 }, (_, i) => addDays(d.today, i - 13));
     const dmap = Object.fromEntries(d.days.map((x) => [x.d, x]));
-    main.innerHTML = hero(d.today) + `
+    main.innerHTML = hero(d.today) + `<div class="alert-strip" id="alert-strip" hidden></div>` + `
       <div class="kpis">
         <div class="card kpi dark"><div class="k">Spent in ${MONTHS_L[Number(d.month.slice(5)) - 1]}</div><div class="v"><span data-count="${d.month_totals.total}" data-dec="2">0</span><small>${cur()}</small></div></div>
         <div class="card kpi"><div class="k">${ic('list')} Orders this month</div><div class="v"><span data-count="${d.month_totals.orders}">0</span></div></div>
@@ -410,7 +648,7 @@ async function pageDashboard() {
       </div>
       <div class="rest-grid">${activeRest().map((r) => { const x = rmap[r.id] || { orders: 0, total: 0 }; return `
         <a class="card rest" style="--c:${r.color};text-decoration:none;color:inherit" href="#/new?r=${r.id}" data-rest="${r.id}">
-          <div class="rn"><span class="badge-r">${esc(r.short || initials(r.name))}</span>${esc(r.name)}</div>
+          <div class="rn">${restLogo(r)}${esc(r.name)}</div>
           <div><div class="rv">${money(x.total)}</div><div class="rm">${x.orders} order${x.orders === 1 ? '' : 's'} this month${x.last ? ' · last ' + fmtDate(x.last) : ''}</div></div>
         </a>`; }).join('')}</div>
       <div class="cols">
@@ -430,7 +668,7 @@ async function pageDashboard() {
         </div>
       </div>`;
     $$('[data-go]', main).forEach((tr) => tr.onclick = () => { location.hash = tr.dataset.go; });
-    startScene(); countUp(main);
+    startScene(); countUp(main); paintBell(); refreshBell();
   } catch (e) { if (e.message !== 'Session ended') main.innerHTML += `<div class="form-error">${esc(e.message)}</div>`; }
 }
 
@@ -498,10 +736,10 @@ function renderBuilder() {
   const r = ob.rid && restById(ob.rid), s = ob.sid && supById(ob.sid);
   const title = ob.editId ? `Edit order <span class="mono" style="font-size:20px">${esc(ob.editNo)}</span>` : 'New order';
   if (!r || !s) {
-    main.innerHTML = pageHead(title, 'Choose where the order is for and who it goes to.') + `
+    main.innerHTML = pageHead(title, 'Choose where the order is for and who it goes to.', '', 'Step 1 of 2', { kind: 'cart', icon: 'cart' }) + `
       <div class="card card-pad stack">
         <div><p class="step-label"><i>1</i>Restaurant</p><div class="choose">${activeRest().map((x) => `
-          <button class="tile ${ob.rid === x.id ? 'on' : ''}" style="--c:${x.color}" data-r="${x.id}"><span class="badge-r" style="--c:${x.color}">${esc(x.short || initials(x.name))}</span><div><b>${esc(x.name)}</b></div></button>`).join('')}</div></div>
+          <button class="tile ${ob.rid === x.id ? 'on' : ''}" style="--c:${x.color}" data-r="${x.id}">${restLogo(x)}<div><b>${esc(x.name)}</b></div></button>`).join('')}</div></div>
         <div><p class="step-label"><i>2</i>Supplier</p><div class="choose">${activeSup().map((x) => `
           <button class="tile ${ob.sid === x.id ? 'on' : ''}" style="--c:${x.color}" data-s="${x.id}"><span class="dot" style="--c:${x.color};width:14px;height:14px"></span><div><b>${esc(x.name)}</b><span>${x.products} items${x.no_code ? ` · ${x.no_code} without code` : ''}</span></div></button>`).join('')}</div></div>
         ${(() => { const dr = Object.entries(drafts()); return dr.length ? `<div><p class="step-label">${ic('note')} Unfinished orders on this device</p><div class="chips">${dr.map(([k, v]) => { const [ri, si] = k.split('|'); const rr = restById(ri), ss = supById(si); return rr && ss ? `<button class="chip" data-draft="${k}"><span class="dot" style="--c:${rr.color}"></span>${esc(rr.name)} → ${esc(ss.name)} · ${v.items.length} items</button>` : ''; }).join('')}</div></div>` : ''; })()}
@@ -511,11 +749,11 @@ function renderBuilder() {
     $$('[data-draft]', main).forEach((b) => b.onclick = () => { const [ri, si] = b.dataset.draft.split('|'); ob.rid = Number(ri); ob.sid = Number(si); pickedPair(); });
     return;
   }
-  main.innerHTML = pageHead(title, '', `<button class="btn ghost sm" id="chg">${ic('again')} Change restaurant / supplier</button>`) + `
+  main.innerHTML = pageHead(title, `${esc(r.name)} → ${esc(s.name)}`, `<button class="btn ghost sm" id="chg">${ic('again')} Change restaurant / supplier</button>`, 'Step 2 of 2', { kind: restKind(r), color: r.color, logo: restLogo(r, 'pb') }) + `
     <div class="builder">
       <div class="card">
         <div class="toolbar">
-          <span class="tag" style="font-size:14px"><span class="badge-r" style="--c:${r.color};width:30px;height:30px;font-size:11px">${esc(r.short || initials(r.name))}</span>${esc(r.name)}</span>
+          <span class="tag" style="font-size:14px">${restLogo(r, 'sm')}${esc(r.name)}</span>
           <span class="muted">→</span><span class="tag" style="font-size:14px"><span class="dot" style="--c:${s.color}"></span>${esc(s.name)}</span>
         </div>
         <div class="toolbar">
@@ -695,9 +933,9 @@ async function pageOrder(id) {
   if (justSent) history.replaceState(null, '', '#/orders/' + id);
   const phone = String(o.supplier_phone || '').replace(/[^\d]/g, '');
   const canEdit = o.status === 'ordered' || isAdmin();
-  main.innerHTML = pageHead(`<span class="mono">${esc(o.order_no)}</span>`, '', `
+  main.innerHTML = pageHead(`<span class="mono">${esc(o.order_no)}</span>`, `${esc(o.restaurant)} → ${esc(o.supplier)}`, `
       <span class="pill ${o.status}" style="font-size:13px;padding:6px 12px">${o.status === 'ordered' ? 'Waiting for delivery' : o.status}</span>`,
-      `<a href="#/orders" style="color:inherit">← Orders</a>`) + `
+      `<a href="#/orders" style="color:inherit">← Orders</a>`, { kind: 'orders', color: o.restaurant_color, logo: restLogo(restById(o.restaurant_id) || { name: o.restaurant, color: o.restaurant_color, short: o.restaurant_short }, 'pb') }) + `
     ${justSent ? `<div class="card sent-banner"><div class="sb-road" aria-hidden="true"><i class="road-line"></i><span class="sb-truck">${TRUCK}</span></div><div class="sb-text"><b>Order saved.</b> Now send it to ${esc(o.supplier)}: copy the message or open WhatsApp.</div></div>` : ''}
     <div class="cols">
       <div class="stack">
@@ -811,7 +1049,7 @@ const ordersFilter = { from: '', to: '', restaurant: '', supplier: '', status: '
 async function pageOrders() {
   if (!ordersFilter.from) { ordersFilter.from = addDays(today(), -30); ordersFilter.to = today(); }
   const f = ordersFilter;
-  const main = shell('orders', pageHead('Orders', 'Every order from all restaurants. Tap one to send, print or mark as received.', `<a class="btn crema" href="#/new">${ic('plus')} New order</a>`) + `
+  const main = shell('orders', pageHead('Orders', 'Every order from all restaurants. Tap one to send, print or mark as received.', `<a class="btn crema" href="#/new">${ic('plus')} New order</a>`, 'Purchasing', { kind: 'orders', icon: 'list' }) + '<div class="alert-strip" id="alert-strip" hidden></div>' + `
     <div class="card">
       <div class="filters">
         <div class="field"><label>From</label><input class="input" type="date" id="f-from" value="${f.from}" /></div>
@@ -837,6 +1075,7 @@ async function pageOrders() {
     } catch (e) { toast(e.message, true); }
   };
   const bind = (id, k) => { $(id).onchange = (e) => { f[k] = e.target.value; load(); }; };
+  paintBell(); refreshBell();
   bind('#f-from', 'from'); bind('#f-to', 'to'); bind('#f-r', 'restaurant'); bind('#f-s', 'supplier'); bind('#f-st', 'status');
   let t; $('#f-q').oninput = (e) => { f.q = e.target.value; clearTimeout(t); t = setTimeout(load, 300); };
   load();
@@ -849,7 +1088,7 @@ async function pageCatalog() {
   const main = shell('catalog', pageHead('Catalog', 'Every item with its supplier code. Add items one by one or import an Excel file.', isAdmin() ? `
       <button class="btn ghost" id="tpl">${ic('download')} Excel template</button>
       <button class="btn ghost" id="imp">${ic('upload')} Import Excel</button>
-      <button class="btn" id="addp">${ic('plus')} Add item</button>` : '') + `
+      <button class="btn" id="addp">${ic('plus')} Add item</button>` : '', 'Products & codes', { kind: 'catalog', icon: 'box' }) + `
     <div class="card">
       <div class="toolbar"><div class="chips" id="sup-chips">${state.boot.suppliers.map((s) => `<button class="chip ${s.id === cat.sid ? 'on' : ''}" data-s="${s.id}"><span class="dot" style="--c:${s.color}"></span>${esc(s.name)}</button>`).join('')}</div></div>
       <div class="toolbar"><div class="search">${ic('search')}<input class="input" id="cq" placeholder="Search name, code or category" value="${esc(cat.q)}" /></div>
@@ -1006,7 +1245,7 @@ function importExcel() {
 
 // ================= SUPPLIERS =================
 async function pageSuppliers() {
-  const main = shell('suppliers', pageHead('Suppliers', 'Who you order from. The WhatsApp number makes “Send” open their chat directly.', isAdmin() ? `<button class="btn" id="adds">${ic('plus')} Add supplier</button>` : ''));
+  const main = shell('suppliers', pageHead('Suppliers', 'Who you order from. The WhatsApp number makes “Send” open their chat directly.', isAdmin() ? `<button class="btn" id="adds">${ic('plus')} Add supplier</button>` : '', 'Who you order from', { kind: 'suppliers', icon: 'truck' }));
   await refreshBoot().catch(() => {});
   main.innerHTML += `<div class="sup-grid">${state.boot.suppliers.map((s) => `
     <div class="card sup" style="--c:${s.color};${s.active ? '' : 'opacity:.55'}">
@@ -1059,7 +1298,7 @@ function pageReports() {
   const years = []; for (let y = Number(t.slice(0, 4)); y >= Number(t.slice(0, 4)) - 4; y--) years.push(y);
   const main = shell('reports', pageHead('Reports', 'Pull a daily, monthly or yearly summary, add a note, then download it.', `
       <button class="btn ghost" data-x="pdf">${ic('pdf')} PDF</button><button class="btn ghost" data-x="word">${ic('word')} Word</button>
-      <button class="btn ghost" data-x="excel">${ic('excel')} Excel</button><button class="btn ghost" data-x="print">${ic('print')} Print</button>`) + `
+      <button class="btn ghost" data-x="excel">${ic('excel')} Excel</button><button class="btn ghost" data-x="print">${ic('print')} Print</button>`, 'Summaries', { kind: 'reports', icon: 'chart' }) + `
     <div class="card no-print" style="margin-bottom:18px"><div class="rep-ctrl">
       <div class="seg" id="rm">${[['day', 'Daily'], ['month', 'Monthly'], ['year', 'Yearly'], ['custom', 'Custom']].map(([k, l]) => `<button data-m="${k}" class="${rep.mode === k ? 'on' : ''}">${l}</button>`).join('')}</div>
       <div class="rep-row">
@@ -1293,14 +1532,14 @@ setMotion(motionOn());
 async function pageSettings(sub) {
   const tabs = isAdmin() ? [['restaurants', 'Restaurants'], ['users', 'Users'], ['company', 'Company & message'], ['account', 'My account'], ['log', 'Activity log']] : [['account', 'My account']];
   sub = tabs.some(([k]) => k === sub) ? sub : tabs[0][0];
-  const main = shell('settings', pageHead('Settings', '', '', isAdmin() ? 'Admin' : 'Staff') +
+  const main = shell('settings', pageHead('Settings', isAdmin() ? 'Restaurants, users, company details and the activity log.' : 'Your profile and password.', '', isAdmin() ? 'Admin' : 'Staff', { kind: 'settings', icon: 'gear' }) +
     `<nav class="stabs">${tabs.map(([k, l]) => `<a class="${k === sub ? 'on' : ''}" href="#/settings/${k}">${l}</a>`).join('')}</nav><div id="set-body">${loading()}</div>`);
   const body = $('#set-body');
   if (sub === 'restaurants') {
     await refreshBoot();
     body.innerHTML = `<div class="card"><div class="card-head"><h3>Restaurants</h3><button class="btn sm" id="addr">${ic('plus')} Add restaurant</button></div>
       <div class="table-wrap"><table class="t"><thead><tr><th></th><th>Name</th><th>Short code</th><th class="hide-sm">Address (on purchase orders)</th><th>Status</th></tr></thead><tbody>
-      ${state.boot.restaurants.map((r) => `<tr class="click ${r.active ? '' : 'off'}" data-r="${r.id}"><td style="width:52px"><span class="badge-r" style="--c:${r.color}">${esc(r.short || '')}</span></td><td><b>${esc(r.name)}</b></td><td class="mono">${esc(r.short || '')}</td><td class="hide-sm">${esc(r.address || '—')}</td><td>${r.active ? 'Active' : 'Hidden'}</td></tr>`).join('')}</tbody></table></div>
+      ${state.boot.restaurants.map((r) => `<tr class="click ${r.active ? '' : 'off'}" data-r="${r.id}"><td style="width:52px">${restLogo(r)}</td><td><b>${esc(r.name)}</b></td><td class="mono">${esc(r.short || '')}</td><td class="hide-sm">${esc(r.address || '—')}</td><td>${r.active ? 'Active' : 'Hidden'}</td></tr>`).join('')}</tbody></table></div>
       <div class="card-pad hint">The short code starts every order number, e.g. <span class="code">TP-261027-01</span>. Tap a row to rename it.</div></div>`;
     $('#addr').onclick = () => restForm(null);
     $$('[data-r]', body).forEach((tr) => tr.onclick = () => restForm(restById(tr.dataset.r)));
@@ -1361,9 +1600,7 @@ async function pageSettings(sub) {
       toast('Password updated.'); ['a-c', 'a-n', 'a-n2'].forEach((id) => { $('#' + id).value = ''; });
     });
   } else if (sub === 'log') {
-    const { log } = await api('audit');
-    const labels = { login: 'Logged in', logout: 'Logged out', login_failed: 'Wrong password', order_created: 'Placed order', order_edited: 'Edited order', order_received: 'Received order', order_cancelled: 'Cancelled order', order_ordered: 'Re-opened order', order_deleted: 'Deleted order', product_added: 'Added item', product_saved: 'Edited item', product_hidden: 'Hid item', product_deleted: 'Deleted item', products_imported: 'Imported Excel', supplier_added: 'Added supplier', supplier_saved: 'Edited supplier', restaurant_added: 'Added restaurant', restaurant_saved: 'Edited restaurant', user_added: 'Added user', user_saved: 'Edited user', settings_saved: 'Changed settings', password_changed: 'Changed password', setup: 'First setup' };
-    body.innerHTML = `<div class="card">${log.map((l) => `<div class="log-row"><span class="muted">${fmtTs(l.ts)}</span><b>${esc(l.username || '—')}</b><span>${esc(labels[l.action] || l.action)}${l.detail ? ` · <span class="muted">${esc(l.detail)}</span>` : ''}</span></div>`).join('') || '<div class="empty">Nothing yet.</div>'}</div>`;
+    await tabLog(body);
   }
 }
 function restForm(r) {
