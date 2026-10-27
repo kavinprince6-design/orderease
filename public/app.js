@@ -143,7 +143,8 @@ function authShell(inner) {
   $('#app').innerHTML = `<div class="auth">
     <section class="auth-brand">
       ${spinLogo()}
-      <div class="brand-row">${markHtml()}<div><div class="wordmark">OrderEase<b>.</b></div><div class="tagline">every order, one tap away</div></div></div>
+      <div class="brand-row auth-logo">${brandBadge()}<div><div class="wordmark wm-anim">${'OrderEase'.split('').map((c, i) => `<i style="--i:${i}">${c}</i>`).join('')}<b class="wm-dot">.</b></div>
+        <div class="tagline tag-rot"><span class="tr-text">every order, one tap away</span><span class="tr-caret"></span></div></div></div>
       <div>
         <h1>Supplier orders for all four restaurants — <em class="typer">without typing codes.</em></h1>
         <p>Search the catalog, tap the quantity, and send the order to Gulfwest, Bidfood or any supplier with every code already filled in.</p>
@@ -156,8 +157,11 @@ function authShell(inner) {
       <div class="tagline">Daily Edition · The Plane · Bupa</div>
       <div class="auth-road" aria-hidden="true"><i class="road-line"></i><span class="auth-truck">${TRUCK}</span></div>
     </section>
-    <section class="auth-form"><div class="auth-card">${inner}</div></section>
+    <section class="auth-form">
+      <div class="af-float" aria-hidden="true">${FLOATERS}</div>
+      <div class="auth-card">${welcomeTruck()}${inner}</div></section>
   </div>`;
+  rotateTagline(); parkTruck();
   $$('.pw-wrap button').forEach((b) => b.addEventListener('click', () => {
     const i = b.previousElementSibling; i.type = i.type === 'password' ? 'text' : 'password'; b.textContent = i.type === 'password' ? 'Show' : 'Hide';
   }));
@@ -179,12 +183,14 @@ function showLogin(msg) {
     act($('#lf button[type=submit]'), async () => {
       try {
         await api('login', { method: 'POST', body: { username: $('#lu').value, password: $('#lp').value } });
+        await truckLeaves();
         await loadBoot();
         if (!location.hash || location.hash === '#') location.hash = '#/dashboard';
         route();
-      } catch (er) { $('#lf-err').innerHTML = `<div class="form-error">${esc(er.message)}</div>`; }
+      } catch (er) { $('#lf-err').innerHTML = `<div class="form-error">${esc(er.message)}</div>`; shake(); }
     });
   };
+  $$('#lf .input').forEach((i) => i.addEventListener('input', () => { const t = $('.wt-truck'); if (t) { t.classList.remove('honk'); void t.offsetWidth; t.classList.add('honk'); } }));
 }
 function showSetup() {
   authShell(`<h2>First-time setup</h2><p class="sub">Create the Admin account. You can add staff accounts afterwards in Settings.</p>
@@ -199,11 +205,54 @@ function showSetup() {
     act($('#sf button[type=submit]'), async () => {
       try {
         await api('setup', { method: 'POST', body: { name: $('#sn').value, username: $('#su').value, password: $('#sp').value } });
-        await loadBoot(); location.hash = '#/dashboard'; route();
-      } catch (er) { $('#sf-err').innerHTML = `<div class="form-error">${esc(er.message)}</div>`; }
+        await truckLeaves(); await loadBoot(); location.hash = '#/dashboard'; route();
+      } catch (er) { $('#sf-err').innerHTML = `<div class="form-error">${esc(er.message)}</div>`; shake(); }
     });
   };
 }
+
+// ---------- login page decoration ----------
+function brandBadge() {
+  return `<span class="brand-badge" aria-hidden="true"><svg viewBox="0 0 100 100">
+    <defs><path id="bb-c" d="M50 50m-38 0a38 38 0 1 1 76 0a38 38 0 1 1-76 0"/></defs>
+    <circle cx="50" cy="50" r="49" fill="#F3F0EA"/>
+    <g class="bb-ring"><text font-family="Space Mono, monospace" font-size="8.6" fill="#5A4636"><textPath href="#bb-c" textLength="236" lengthAdjust="spacing">ORDEREASE · ORDER · SEND · RECEIVE ·</textPath></text></g>
+    <circle cx="50" cy="50" r="27" fill="#282828"/>
+    <text x="47" y="57" text-anchor="middle" font-family="Space Mono, monospace" font-size="19" fill="#F3F0EA">Oe</text>
+    <circle class="bb-dot" cx="66" cy="55" r="2.6" fill="#D7A46E"/></svg></span>`;
+}
+const TAGLINES = ['every order, one tap away', 'codes filled in for you', 'WhatsApp or PDF in one tap', 'four restaurants, one place', 'daily · monthly · yearly reports'];
+let tagTimer = null;
+function rotateTagline() {
+  clearInterval(tagTimer);
+  const el = $('.tr-text'); if (!el || calm()) return;
+  let i = 0;
+  const typeTo = async (txt) => {
+    const box = $('.tr-text'); if (!box) return clearInterval(tagTimer);
+    for (let k = box.textContent.length; k >= 0; k--) { box.textContent = box.textContent.slice(0, k); await new Promise((r) => setTimeout(r, 18)); }
+    for (let k = 1; k <= txt.length; k++) { if (!$('.tr-text')) return; box.textContent = txt.slice(0, k); await new Promise((r) => setTimeout(r, 45)); }
+  };
+  tagTimer = setInterval(() => { if (!$('.tr-text')) return clearInterval(tagTimer); i = (i + 1) % TAGLINES.length; typeTo(TAGLINES[i]); }, 4200);
+}
+const FLOATERS = [['box', 8, 14, 0], ['list', 82, 10, 1.5], ['truck', 76, 78, 3], ['cart', 12, 72, 2.2], ['pdf', 88, 44, .8], ['check', 6, 42, 3.6]]
+  .map(([n, x, y, d]) => `<span class="aff" style="left:${x}%;top:${y}%;animation-delay:-${d}s">${ic(n)}</span>`).join('');
+function welcomeTruck() {
+  const h = new Date().getHours();
+  const hi = h < 5 ? 'Late shift? 🌙' : h < 12 ? 'Good morning ☀️' : h < 17 ? 'Good afternoon 👋' : 'Good evening 🌙';
+  return `<div class="welcome-truck" aria-hidden="true"><div class="wt-move"><span class="wt-sign"><span>${hi}</span></span><i class="wt-rope"></i><span class="wt-truck">${TRUCK}</span></div><i class="wt-road"></i></div>`;
+}
+function parkTruck() {
+  const m = $('.wt-move'); if (!m) return;
+  if (calm()) { m.closest('.welcome-truck').classList.add('parked'); return; }
+  m.addEventListener('animationend', () => m.closest('.welcome-truck').classList.add('parked'), { once: true });
+}
+function truckLeaves() {
+  const w = $('.welcome-truck'); if (!w || calm()) return Promise.resolve();
+  w.classList.remove('parked'); w.classList.add('leave');
+  return new Promise((r) => setTimeout(r, 650));
+}
+function shake() { const c = $('.auth-card'); if (!c || calm()) return; c.classList.remove('shake'); void c.offsetWidth; c.classList.add('shake'); }
+
 async function logout(msg) {
   idle.stop();
   try { await fetch('/api/logout', { method: 'POST', credentials: 'same-origin' }); } catch { /* offline */ }
