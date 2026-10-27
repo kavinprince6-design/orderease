@@ -665,15 +665,40 @@ a.kpi:hover, .rest:hover, .sup:hover, .tile:hover { transform: translateY(-3px);
   .dc-path, .dc-plane, .dc-road, .dc-truck, .dc-boxes, .dc-house, .dc-bars, .dc-gear.g1, .dc-cartbob { left: auto; right: 6%; opacity: .25; }
 }
 
-/* =================== Fly-by truck on page change =================== */
-#flyby { position: fixed; top: 6px; left: 0; width: 100vw; height: 30px; pointer-events: none; z-index: 900; overflow: hidden; display: none; }
+/* =================== Page change: dallah pours coffee + gold star sweep =================== */
+#flyby { position: fixed; inset: 0 0 auto 0; height: 90px; pointer-events: none; z-index: 900; display: none; }
 #flyby.go { display: block; }
-#flyby .fb-craft { position: absolute; top: 0; left: 0; width: 52px; height: 30px; color: var(--espresso); }
-#flyby .fb-craft svg { width: 52px; height: 30px; }
-#flyby .fb-craft .tk-body { fill: var(--crema); }
-#flyby .fb-craft::before { content: ""; position: absolute; right: calc(100% + 2px); top: 22px; width: 100vw; height: 2px; background: repeating-linear-gradient(270deg, var(--crema) 0 8px, transparent 8px 14px); -webkit-mask-image: linear-gradient(90deg, transparent, #000 75%); mask-image: linear-gradient(90deg, transparent, #000 75%); }
-#flyby.go .fb-craft { animation: fb-drive 1.05s cubic-bezier(.45,.05,.55,.95) both; }
-@keyframes fb-drive { from { transform: translateX(-70px); } to { transform: translateX(100vw); } }
+.fb-stars { position: absolute; top: 0; left: 0; right: 0; height: 18px; overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 35%, #000 65%, transparent); mask-image: linear-gradient(90deg, transparent, #000 35%, #000 65%, transparent);
+  -webkit-mask-size: 60% 100%; mask-size: 60% 100%; -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; }
+#flyby.go .fb-stars { animation: fb-sweep 1.15s cubic-bezier(.45,.05,.55,.95) both; }
+.fb-stars svg { width: 100%; height: 18px; display: block; }
+.fb-stars rect { fill: var(--paper); stroke: var(--crema); stroke-width: 1.2; }
+.fb-stars::after { content: ''; position: absolute; left: 0; right: 0; top: 9px; height: 1px; background: var(--crema); opacity: .5; }
+@keyframes fb-sweep { from { -webkit-mask-position: -70% 0; mask-position: -70% 0; } to { -webkit-mask-position: 170% 0; mask-position: 170% 0; } }
+.fb-dallah { position: absolute; top: 14px; left: 50%; width: 112px; margin-left: -56px; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 4px 6px; box-shadow: 0 10px 30px rgba(40,32,20,.16); opacity: 0; }
+#flyby.go .fb-dallah { animation: fb-pop 1.2s ease both; }
+@keyframes fb-pop { 0% { opacity: 0; transform: translateY(-16px) scale(.85); } 15% { opacity: 1; transform: translateY(0) scale(1); } 80% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-10px) scale(.95); } }
+.dl-svg { width: 100%; height: 62px; display: block; overflow: visible; }
+.dl-svg path, .dl-svg circle { stroke: var(--espresso); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+.dl-body { fill: var(--crema) !important; }
+.dl-knob { fill: var(--crema) !important; }
+.dl-band { stroke: #fff !important; stroke-width: 1.6 !important; opacity: .8; }
+.dl-finjan { fill: #fff !important; }
+.dl-coffee { stroke: #8A5E3C !important; stroke-width: 3 !important; opacity: 0; }
+.dl-pour { stroke: #8A5E3C !important; stroke-width: 2.4 !important; stroke-dasharray: 34; stroke-dashoffset: 34; }
+.dl-steam { stroke: var(--ink-3) !important; stroke-width: 1.4 !important; opacity: 0; }
+.dl-pot { transform-box: view-box; transform-origin: 40px 60px; }
+#flyby.go .dl-pot { animation: dl-tilt 1.2s ease-in-out both; }
+@keyframes dl-tilt { 0%, 12% { transform: rotate(0); } 32%, 66% { transform: rotate(16deg) translateY(-3px); } 82%, 100% { transform: rotate(0); } }
+#flyby.go .dl-pour { animation: dl-pour 1.2s ease-in-out both; }
+@keyframes dl-pour { 0%, 28% { stroke-dashoffset: 34; opacity: 1; } 44%, 62% { stroke-dashoffset: 0; opacity: 1; } 76% { stroke-dashoffset: -34; opacity: 1; } 100% { stroke-dashoffset: -34; opacity: 0; } }
+#flyby.go .dl-coffee { animation: dl-fill 1.2s ease both; }
+@keyframes dl-fill { 0%, 40% { opacity: 0; } 60%, 100% { opacity: 1; } }
+#flyby.go .dl-steam { animation: dl-steam 1.2s ease-out both; }
+#flyby.go .dl-steam.s2 { animation-delay: .08s; } #flyby.go .dl-steam.s3 { animation-delay: .16s; }
+@keyframes dl-steam { 0%, 55% { opacity: 0; transform: translateY(4px); } 75% { opacity: .9; } 100% { opacity: 0; transform: translateY(-6px); } }
+@media (max-width: 900px) { .fb-dallah { top: 70px; } }
 
 /* =================== Live update bar =================== */
 #updbar { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--char); color: #fff; padding: 10px 12px 10px 16px; border-radius: 14px; display: flex; gap: 12px; align-items: center; z-index: 85; box-shadow: 0 10px 30px rgba(0,0,0,.25); font-size: 14px; animation: rise-in .3s both; }

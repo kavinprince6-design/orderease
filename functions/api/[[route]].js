@@ -79,6 +79,7 @@ async function audit(env, username, action, detail, ref = null, rid = null) {
 }
 // Website updates shown in the bell ("What's new"). Add a new entry at the top for each release.
 const RELEASES = [
+  { v: 7, ts: 1793118600, title: 'Arabic coffee when you change page', text: 'Changing page now shows a small dallah pouring Arabic coffee into a finjan, with a gold star pattern sweeping across the top. Turn it off in My account if you prefer.' },
   { v: 6, ts: 1793116800, title: 'Camel rider on the login page', text: 'The login page now has a desert with mountains, dunes and a camel rider crossing slowly. The sky follows the real time in Jeddah: sun by day, moon and stars at night.' },
   { v: 5, ts: 1793113200, title: 'Updates by itself', text: 'When a new version of OrderEase is published, every open screen refreshes by itself and stays on the same page. If you are in the middle of an order or typing, it waits until you finish.' },
   { v: 4, ts: 1793108400, title: 'Bell, alerts and a better Activity log', text: 'The bell shows alerts (late deliveries, items without a code, orders still waiting) and what staff did. Settings → Activity log has filters, View details and an Excel download. Every page has its own banner, and a little truck drives across when you change page.' },

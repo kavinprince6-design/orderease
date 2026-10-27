@@ -530,14 +530,28 @@ function decoLayer(d) {
   return `<div class="deco-layer" aria-hidden="true"><span class="dc-cartbob">${ic('cart')}</span><i class="dc-dot d1"></i><i class="dc-dot d2"></i><i class="dc-dot d3"></i></div>`;
 }
 
-// ---- little truck that drives across the top when you change page ----
+// ---- page change: a dallah pours Arabic coffee into a finjan, a gold star pattern sweeps across the top ----
+const DALLAH = `<svg class="dl-svg" viewBox="0 0 120 70" aria-hidden="true">
+  <g class="dl-pot">
+    <path class="dl-body" d="M30 60 Q22 60 22 52 Q22 40 30 36 L32 26 Q30 22 34 20 L46 20 Q50 22 48 26 L50 36 Q58 40 58 52 Q58 60 50 60 Z"/>
+    <path class="dl-band" d="M24 46 H56"/>
+    <path class="dl-lid" d="M34 20 Q40 12 46 20 M40 14 V9"/><circle class="dl-knob" cx="40" cy="8" r="2.2"/>
+    <path class="dl-spout" d="M56 44 Q66 40 68 30 Q70 22 78 20"/>
+    <path class="dl-handle" d="M24 44 Q12 40 18 28 Q20 24 30 28"/>
+  </g>
+  <path class="dl-pour" d="M79 21 Q86 30 88 46"/>
+  <g class="dl-cup"><path class="dl-finjan" d="M80 48 H98 L95 60 Q89 63 83 60 Z"/><path class="dl-coffee" d="M81.5 50 H96.5"/>
+    <path class="dl-steam s1" d="M85 44 q-2 -4 0 -8"/><path class="dl-steam s2" d="M90 43 q-2 -4 0 -8"/><path class="dl-steam s3" d="M95 44 q-2 -4 0 -8"/></g>
+</svg>`;
+const STAR8 = (x) => `<rect x="${x - 4.6}" y="5.4" width="9.2" height="9.2"/><rect x="${x - 4.6}" y="5.4" width="9.2" height="9.2" transform="rotate(45 ${x} 10)"/>`;
 function flyby() {
   if (calm()) return;
   let f = $('#flyby');
   if (!f) {
     f = document.createElement('div'); f.id = 'flyby'; f.setAttribute('aria-hidden', 'true');
-    f.innerHTML = `<div class="fb-craft">${TRUCK}</div>`;
-    f.addEventListener('animationend', (e) => { if (e.target.classList.contains('fb-craft')) f.classList.remove('go'); });
+    f.innerHTML = `<div class="fb-stars"><svg viewBox="0 0 400 20" preserveAspectRatio="xMidYMid meet">${Array.from({ length: 13 }, (_, i) => STAR8(14 + i * 31)).join('')}</svg></div>
+      <div class="fb-dallah">${DALLAH}</div>`;
+    f.addEventListener('animationend', (e) => { if (e.target.classList.contains('fb-dallah')) f.classList.remove('go'); });
     document.body.appendChild(f);
   }
   if (f.classList.contains('go')) return;
@@ -1717,7 +1731,7 @@ async function pageSettings(sub) {
           <label class="btn ghost" style="cursor:pointer">${ic('user')} Choose photo<input type="file" accept="image/*" id="me-ph" hidden /></label>
           ${me.photo ? '<button class="btn ghost" id="me-rm">Remove photo</button>' : ''}</div></div>
         <button class="btn crema" id="me-save">Save profile</button>
-        <label class="check" style="margin-top:18px"><input type="checkbox" id="me-anim" ${motionOn() ? 'checked' : ''}/> Moving pictures and truck animations <span class="opt">(this device)</span></label>
+        <label class="check" style="margin-top:18px"><input type="checkbox" id="me-anim" ${motionOn() ? 'checked' : ''}/> Moving pictures, coffee pour and truck animations <span class="opt">(this device)</span></label>
         <p class="hint" style="margin:10px 0 14px">You are signed out automatically after ${Math.round((me.idle || 1800) / 60)} minutes without activity.</p>
         <button class="btn danger" id="me-out">${ic('out')} Log out</button>
       </div></div>
