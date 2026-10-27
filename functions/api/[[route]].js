@@ -81,6 +81,9 @@ async function ensureDb(env) {
   } catch { have = 0; }
   if (have < DATA_VERSION) {
     await env.DB.batch(SCHEMA.map((s) => env.DB.prepare(s)));
+    // v2: optional position + photo on user profiles
+    try { await env.DB.prepare('ALTER TABLE users ADD COLUMN position TEXT').run(); } catch { /* already there */ }
+    try { await env.DB.prepare('ALTER TABLE users ADD COLUMN photo TEXT').run(); } catch { /* already there */ }
     if (have < 1) {
       const r = await env.DB.prepare('SELECT COUNT(*) n FROM restaurants').first();
       if (!r.n) {
@@ -114,7 +117,7 @@ async function currentUser(env, request) {
   if (!token) return null;
   const idle = (Number(env.SESSION_IDLE_MINUTES) || IDLE_MIN_DEFAULT) * 60;
   const row = await env.DB.prepare(
-    `SELECT s.token, s.created_at, s.last_seen, u.id, u.username, u.display_name, u.role, u.active, u.restaurants
+    `SELECT s.token, s.created_at, s.last_seen, u.id, u.username, u.display_name, u.role, u.active, u.restaurants, u.position, u.photo
        FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ?`
   ).bind(token).first();
   if (!row) return null;
@@ -125,7 +128,7 @@ async function currentUser(env, request) {
   }
   if (t - row.last_seen > 60) await env.DB.prepare('UPDATE sessions SET last_seen = ? WHERE token = ?').bind(t, token).run();
   return {
-    id: row.id, username: row.username, name: row.display_name, role: row.role, token, idle,
+    id: row.id, username: row.username, name: row.display_name, role: row.role, token, idle, position: row.position || '', photo: row.photo || '',
     restaurants: row.role === 'admin' || !row.restaurants ? null
       : String(row.restaurants).split(',').map(Number).filter(Boolean),
   };
@@ -135,7 +138,8 @@ function rFilter(u, col = 'o.restaurant_id') {
   if (!u.restaurants || !u.restaurants.length) return { sql: '', args: [] };
   return { sql: ` AND ${col} IN (${u.restaurants.map(() => '?').join(',')})`, args: u.restaurants };
 }
-const publicUser = (u) => ({ id: u.id, username: u.username, name: u.name, role: u.role, restaurants: u.restaurants, idle: u.idle });
+const publicUser = (u) => ({ id: u.id, username: u.username, name: u.name, role: u.role, restaurants: u.restaurants, idle: u.idle, position: u.position, photo: u.photo });
+const okPhoto = (v) => v === '' || v === null || (/^data:image\/(png|jpeg|webp);base64,/.test(String(v)) && String(v).length < 200000);
 
 // ---------- auth ----------
 async function login(env, request, body) {
@@ -184,8 +188,8 @@ async function createUser(env, b, isFirst) {
   const hash = await hashPassword(password, salt);
   const role = isFirst ? 'admin' : (b.role === 'admin' ? 'admin' : 'staff');
   const rest = Array.isArray(b.restaurants) ? b.restaurants.map(Number).filter(Boolean).join(',') : null;
-  await env.DB.prepare('INSERT INTO users (username, display_name, role, pass_hash, pass_salt, restaurants) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(username, name, role, hash, salt, role === 'admin' ? null : (rest || null)).run();
+  await env.DB.prepare('INSERT INTO users (username, display_name, role, pass_hash, pass_salt, restaurants, position) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .bind(username, name, role, hash, salt, role === 'admin' ? null : (rest || null), str(b.position, 80) || null).run();
   return { ok: true, username };
 }
 
@@ -317,6 +321,16 @@ export async function onRequest(context) {
     const admin = user.role === 'admin';
     const needAdmin = () => (admin ? null : err('Only an Admin can do this.', 403));
 
+    if (a === 'me' && !b && method === 'PUT') {
+      if (body.photo !== undefined && !okPhoto(body.photo)) return err('The photo is too big or not a picture.');
+      const st = [env.DB.prepare('UPDATE users SET position = ? WHERE id = ?').bind(str(body.position, 80) || null, user.id)];
+      if (body.name !== undefined && str(body.name, 80)) st.push(env.DB.prepare('UPDATE users SET display_name = ? WHERE id = ?').bind(str(body.name, 80), user.id));
+      if (body.photo !== undefined) st.push(env.DB.prepare('UPDATE users SET photo = ? WHERE id = ?').bind(body.photo || null, user.id));
+      await env.DB.batch(st);
+      await audit(env, user.username, 'profile_saved', null);
+      const fresh = await currentUser(env, request);
+      return json({ ok: true, user: publicUser(fresh) });
+    }
     if (a === 'me' && b === 'password' && method === 'POST') {
       const u = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(user.id).first();
       if (!safeEqual(await hashPassword(String(body.current || ''), u.pass_salt), u.pass_hash)) return err('Your current password is not right.');
@@ -600,7 +614,7 @@ export async function onRequest(context) {
     if (a === 'users') {
       const no = needAdmin(); if (no) return no;
       if (method === 'GET') {
-        const { results } = await env.DB.prepare('SELECT id, username, display_name, role, restaurants, active, locked_until, last_login FROM users ORDER BY role, username').all();
+        const { results } = await env.DB.prepare('SELECT id, username, display_name, role, restaurants, active, locked_until, last_login, position, photo FROM users ORDER BY role, username').all();
         return json({ users: results, now: now() });
       }
       if (method === 'POST') {
@@ -617,8 +631,10 @@ export async function onRequest(context) {
         const active = body.active === false || body.active === 0 ? 0 : 1;
         if (u.id === user.id && (role !== 'admin' || !active)) return err('You cannot remove your own Admin access.');
         const rest = Array.isArray(body.restaurants) ? body.restaurants.map(Number).filter(Boolean).join(',') : null;
-        const st = [env.DB.prepare('UPDATE users SET display_name = ?, role = ?, restaurants = ?, active = ? WHERE id = ?')
-          .bind(str(body.name, 80) || u.display_name, role, role === 'admin' ? null : (rest || null), active, id)];
+        if (body.photo !== undefined && !okPhoto(body.photo)) return err('The photo is too big or not a picture.');
+        const st = [env.DB.prepare('UPDATE users SET display_name = ?, role = ?, restaurants = ?, active = ?, position = ? WHERE id = ?')
+          .bind(str(body.name, 80) || u.display_name, role, role === 'admin' ? null : (rest || null), active, str(body.position, 80) || null, id)];
+        if (body.photo !== undefined) st.push(env.DB.prepare('UPDATE users SET photo = ? WHERE id = ?').bind(body.photo || null, id));
         if (body.unlock) st.push(env.DB.prepare('UPDATE users SET failed_count = 0, locked_until = NULL WHERE id = ?').bind(id));
         if (body.password) {
           if (String(body.password).length < 6) return err('Password must be at least 6 characters.');

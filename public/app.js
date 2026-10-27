@@ -246,7 +246,7 @@ function shell(active, content) {
       <div class="brand-row">${markHtml()}<div><div class="wordmark">OrderEase<b>.</b></div><div class="tagline">${esc(state.boot.settings.company)}</div></div></div>
       <a class="nav cta" href="#/new">${ic('plus')} New order</a>
       ${NAV.map((n) => `<a class="nav ${active === n.h ? 'on' : ''}" href="#/${n.h}">${ic(n.i)}${n.t}</a>`).join('')}
-      <div class="side-foot"><div class="avatar">${esc(initials(u.name))}</div><div class="who"><b>${esc(u.name)}</b><span>${esc(u.role)}</span></div>
+      <div class="side-foot"><a href="#/settings/account" title="My account">${avatarHtml(u.name, u.photo, 'mini')}</a><div class="who"><b>${esc(u.name)}</b><span>${esc(u.position || (u.role === 'admin' ? 'Admin' : 'Staff'))}</span></div>
         <button id="lo" title="Log out" aria-label="Log out">${ic('out')}</button></div>
     </aside>
     <header class="topbar"><div class="brand-row">${markHtml()}<div class="wordmark">OrderEase<b>.</b></div></div><button id="lo2">${ic('out')} Log out</button></header>
@@ -281,7 +281,7 @@ function route() {
 
 
 // ================= ANIMATION & DECORATION =================
-const calm = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const calm = () => document.documentElement.classList.contains('no-motion') || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 // line-drawn delivery truck (faces right)
 const TRUCK = `<svg class="truck" viewBox="0 0 72 40" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
   <path class="tk-body" d="M3 30V9h40v21M43 15h13l9 9v6H43"/><path d="M47 18h7l5 6H47z"/>
@@ -1281,11 +1281,20 @@ async function reportExcel(d) {
 }
 
 // ================= SETTINGS =================
+function avatarHtml(name, photo, size = '') {
+  return photo ? `<span class="av ${size}"><img src="${photo}" alt="" /></span>` : `<span class="av ${size}">${esc(initials(name).slice(0, 1))}</span>`;
+}
+const fmtShortTs = (ts) => { const d = new Date(ts * 1000); return `${d.getDate()} ${MONTHS[d.getMonth()]}, ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+const pwBox = (id, label, auto) => `<div class="field"><label for="${id}">${label}</label><div class="pw-wrap"><input class="input" id="${id}" type="password" autocomplete="${auto}" /><button type="button" data-eye="${id}">SHOW</button></div></div>`;
+function motionOn() { try { return localStorage.getItem('oe_motion') !== 'off'; } catch { return true; } }
+function setMotion(on) { try { localStorage.setItem('oe_motion', on ? 'on' : 'off'); } catch {} document.documentElement.classList.toggle('no-motion', !on); }
+setMotion(motionOn());
+
 async function pageSettings(sub) {
   const tabs = isAdmin() ? [['restaurants', 'Restaurants'], ['users', 'Users'], ['company', 'Company & message'], ['account', 'My account'], ['log', 'Activity log']] : [['account', 'My account']];
   sub = tabs.some(([k]) => k === sub) ? sub : tabs[0][0];
-  const main = shell('settings', pageHead('Settings', isAdmin() ? 'Add restaurants, staff accounts and change how orders look.' : 'Your account.') +
-    `<div class="set-nav">${tabs.map(([k, l]) => `<a class="chip ${k === sub ? 'on' : ''}" href="#/settings/${k}" style="text-decoration:none">${l}</a>`).join('')}</div><div id="set-body">${loading()}</div>`);
+  const main = shell('settings', pageHead('Settings', '', '', isAdmin() ? 'Admin' : 'Staff') +
+    `<nav class="stabs">${tabs.map(([k, l]) => `<a class="${k === sub ? 'on' : ''}" href="#/settings/${k}">${l}</a>`).join('')}</nav><div id="set-body">${loading()}</div>`);
   const body = $('#set-body');
   if (sub === 'restaurants') {
     await refreshBoot();
@@ -1297,14 +1306,16 @@ async function pageSettings(sub) {
     $$('[data-r]', body).forEach((tr) => tr.onclick = () => restForm(restById(tr.dataset.r)));
   } else if (sub === 'users') {
     const { users, now } = await api('users');
-    body.innerHTML = `<div class="card"><div class="card-head"><h3>Users</h3><button class="btn sm" id="addu">${ic('plus')} Add user</button></div>
-      <div class="table-wrap"><table class="t"><thead><tr><th>Name</th><th>Username</th><th>Role</th><th class="hide-sm">Restaurants</th><th class="hide-sm">Last login</th><th>Status</th></tr></thead><tbody>
-      ${users.map((u) => `<tr class="click ${u.active ? '' : 'off'}" data-u="${u.id}"><td><b>${esc(u.display_name)}</b></td><td class="mono">${esc(u.username)}</td><td style="text-transform:capitalize">${u.role}</td>
-        <td class="hide-sm">${u.role === 'admin' || !u.restaurants ? 'All' : u.restaurants.split(',').map((id) => esc(restById(id)?.name || '?')).join(', ')}</td><td class="hide-sm">${fmtTs(u.last_login)}</td>
-        <td>${!u.active ? 'Off' : u.locked_until && u.locked_until > now ? `<span style="color:var(--bad);font-weight:700">${ic('lock')} Locked</span>` : 'Active'}</td></tr>`).join('')}</tbody></table></div>
-      <div class="card-pad hint"><b>Admin</b> can do everything. <b>Staff</b> can place and receive orders for their restaurants and see reports, but cannot change the catalog, suppliers or users.</div></div>`;
+    const restNames = (u) => u.role === 'admin' || !u.restaurants ? 'All restaurants' : u.restaurants.split(',').map((id) => esc(restById(id)?.name || '?')).join(', ');
+    const status = (u) => !u.active ? '<span class="st off">Off</span>' : u.locked_until && u.locked_until > now ? `<span class="st locked">${ic('lock')} Locked</span>` : '<span class="st active">Active</span>';
+    body.innerHTML = `<p class="set-intro">Staff can place, edit and receive orders only for the restaurants ticked for them, and see reports. Only Admins can change the catalog, suppliers, restaurants and users.</p>
+      <div class="set-actions"><button class="btn crema" id="addu">${ic('plus')} Add user</button></div>
+      <div class="card"><div class="table-wrap"><table class="t users-t"><thead><tr><th>User</th><th>Role</th><th class="hide-sm">Restaurants</th><th>Status</th><th class="hide-sm">Last sign-in</th><th></th></tr></thead><tbody>
+      ${users.map((u) => `<tr class="${u.active ? '' : 'off'}"><td><div class="u-cell">${avatarHtml(u.display_name, u.photo)}<div><b>${esc(u.display_name)}</b><span>${u.position ? esc(u.position) + ' · ' : ''}@${esc(u.username)}</span></div></div></td>
+        <td><span class="role ${u.role}">${u.role === 'admin' ? 'Admin' : 'Staff'}</span></td><td class="hide-sm muted-2">${restNames(u)}</td><td>${status(u)}</td>
+        <td class="hide-sm muted-2">${u.last_login ? fmtShortTs(u.last_login) : 'Never'}</td><td class="r"><button class="btn ghost sm" data-u="${u.id}">${ic('edit')} Edit</button></td></tr>`).join('')}</tbody></table></div></div>`;
     $('#addu').onclick = () => userForm(null);
-    $$('[data-u]', body).forEach((tr) => tr.onclick = () => userForm(users.find((u) => u.id === Number(tr.dataset.u)), now));
+    $$('[data-u]', body).forEach((b) => b.onclick = () => userForm(users.find((u) => u.id === Number(b.dataset.u)), now));
   } else if (sub === 'company') {
     const st = state.boot.settings;
     body.innerHTML = `<div class="card card-pad" style="max-width:640px">
@@ -1315,11 +1326,40 @@ async function pageSettings(sub) {
       <button class="btn" id="c-ok">Save</button></div>`;
     $('#c-ok').onclick = () => act($('#c-ok'), async () => { const r = await api('settings', { method: 'PUT', body: { company: $('#c-co').value, currency: $('#c-cur').value, greeting: $('#c-gr').value, signoff: $('#c-so').value } }); state.boot.settings = r.settings; toast('Saved.'); pageSettings('company'); });
   } else if (sub === 'account') {
-    body.innerHTML = `<div class="card card-pad" style="max-width:460px"><h3>${esc(state.boot.user.name)}</h3><p class="muted" style="margin-top:0">@${esc(state.boot.user.username)} · ${esc(state.boot.user.role)}</p>
-      <div class="field"><label>Current password</label><input class="input" type="password" id="a-c" autocomplete="current-password" /></div>
-      <div class="field"><label>New password (6+ characters)</label><input class="input" type="password" id="a-n" autocomplete="new-password" /></div>
-      <button class="btn" id="a-ok">Change password</button></div>`;
-    $('#a-ok').onclick = () => act($('#a-ok'), async () => { await api('me/password', { method: 'POST', body: { current: $('#a-c').value, password: $('#a-n').value } }); toast('Password changed.'); $('#a-c').value = ''; $('#a-n').value = ''; });
+    const me = state.boot.user;
+    let photo; // undefined = unchanged
+    body.innerHTML = `<div class="acct">
+      <div class="card"><div class="card-head"><h3 class="h-ic">${ic('user')} Profile</h3></div><div class="card-pad">
+        <div class="me-row"><div id="me-av">${avatarHtml(me.name, me.photo, 'xl')}</div><div><div class="me-name">${esc(me.name)}</div>
+          <div class="me-sub">${me.position ? `<b>${esc(me.position)}</b> · ` : ''}@${esc(me.username)} · <span class="role ${me.role}">${me.role === 'admin' ? 'Admin' : 'Staff'}</span></div></div></div>
+        <div class="field"><label>Full name</label><input class="input" id="me-n" value="${esc(me.name)}" /></div>
+        <div class="field"><label>Position <span class="opt">(optional)</span></label><input class="input" id="me-pos" value="${esc(me.position || '')}" placeholder="e.g. Exclusive chef" /></div>
+        <div class="field"><label>Photo <span class="opt">(optional)</span></label><div class="actions">
+          <label class="btn ghost" style="cursor:pointer">${ic('user')} Choose photo<input type="file" accept="image/*" id="me-ph" hidden /></label>
+          ${me.photo ? '<button class="btn ghost" id="me-rm">Remove photo</button>' : ''}</div></div>
+        <button class="btn crema" id="me-save">Save profile</button>
+        <label class="check" style="margin-top:18px"><input type="checkbox" id="me-anim" ${motionOn() ? 'checked' : ''}/> Moving pictures and truck animations <span class="opt">(this device)</span></label>
+        <p class="hint" style="margin:10px 0 14px">You are signed out automatically after ${Math.round((me.idle || 1800) / 60)} minutes without activity.</p>
+        <button class="btn danger" id="me-out">${ic('out')} Log out</button>
+      </div></div>
+      <div class="card"><div class="card-head"><h3 class="h-ic">${ic('lock')} Change password</h3></div><div class="card-pad">
+        ${pwBox('a-c', 'Current password', 'current-password')}${pwBox('a-n', 'New password (min. 6)', 'new-password')}${pwBox('a-n2', 'Confirm new password', 'new-password')}
+        <button class="btn crema" id="a-ok">Update password</button>
+      </div></div></div>`;
+    $$('[data-eye]', body).forEach((b) => b.onclick = () => { const i = $('#' + b.dataset.eye); const sh = i.type === 'password'; i.type = sh ? 'text' : 'password'; b.textContent = sh ? 'HIDE' : 'SHOW'; });
+    $('#me-ph').onchange = async (e) => { const f = e.target.files[0]; if (!f) return; try { photo = await shrinkImage(f, 240); $('#me-av').innerHTML = avatarHtml(me.name, photo, 'xl'); toast('Photo ready — tap Save profile.'); } catch { toast('Could not read that photo.', true); } };
+    if ($('#me-rm')) $('#me-rm').onclick = () => { photo = ''; $('#me-av').innerHTML = avatarHtml(me.name, '', 'xl'); };
+    $('#me-save').onclick = () => act($('#me-save'), async () => {
+      const b = { name: $('#me-n').value, position: $('#me-pos').value }; if (photo !== undefined) b.photo = photo;
+      const r = await api('me', { method: 'PUT', body: b }); state.boot.user = { ...state.boot.user, ...r.user }; toast('Profile saved.'); pageSettings('account');
+    });
+    $('#me-anim').onchange = (e) => { setMotion(e.target.checked); toast(e.target.checked ? 'Animations on.' : 'Animations off on this device.'); };
+    $('#me-out').onclick = () => logout();
+    $('#a-ok').onclick = () => act($('#a-ok'), async () => {
+      if ($('#a-n').value !== $('#a-n2').value) throw new Error('The two new passwords are not the same.');
+      await api('me/password', { method: 'POST', body: { current: $('#a-c').value, password: $('#a-n').value } });
+      toast('Password updated.'); ['a-c', 'a-n', 'a-n2'].forEach((id) => { $('#' + id).value = ''; });
+    });
   } else if (sub === 'log') {
     const { log } = await api('audit');
     const labels = { login: 'Logged in', logout: 'Logged out', login_failed: 'Wrong password', order_created: 'Placed order', order_edited: 'Edited order', order_received: 'Received order', order_cancelled: 'Cancelled order', order_ordered: 'Re-opened order', order_deleted: 'Deleted order', product_added: 'Added item', product_saved: 'Edited item', product_hidden: 'Hid item', product_deleted: 'Deleted item', products_imported: 'Imported Excel', supplier_added: 'Added supplier', supplier_saved: 'Edited supplier', restaurant_added: 'Added restaurant', restaurant_saved: 'Edited restaurant', user_added: 'Added user', user_saved: 'Edited user', settings_saved: 'Changed settings', password_changed: 'Changed password', setup: 'First setup' };
@@ -1348,21 +1388,26 @@ function userForm(u, now) {
   const m = modal({ title: isNew ? 'Add user' : `Edit ${u.display_name}`, body: `
     <div class="grid2"><div class="field"><label>Full name</label><input class="input" id="uf-n" value="${esc(u.display_name || '')}" /></div>
       <div class="field"><label>Username</label><input class="input" id="uf-u" value="${esc(u.username || '')}" ${isNew ? '' : 'disabled'} /></div></div>
-    <div class="field"><label>${isNew ? 'Password (6+ characters)' : 'New password (leave empty to keep)'}</label><input class="input" id="uf-p" type="text" autocomplete="new-password" /></div>
+    <div class="grid2"><div class="field"><label>Position <span class="opt">(optional)</span></label><input class="input" id="uf-pos" value="${esc(u.position || '')}" placeholder="e.g. Exclusive chef" /></div>
+      <div class="field"><label>${isNew ? 'Password (6+ characters)' : 'New password (leave empty to keep)'}</label><input class="input" id="uf-p" type="text" autocomplete="new-password" /></div></div>
+    ${!isNew ? `<div class="field"><label>Photo <span class="opt">(optional)</span></label><div class="img-drop"><span id="uf-av">${avatarHtml(u.display_name, u.photo, 'lg')}</span><div class="actions"><label class="btn ghost sm" style="cursor:pointer">${ic('upload')} Choose photo<input type="file" accept="image/*" id="uf-ph" hidden /></label>${u.photo ? '<button type="button" class="btn ghost sm" id="uf-rm">Remove</button>' : ''}</div></div></div>` : ''}
     <div class="field"><label>Role</label><div class="seg" id="uf-r"><button type="button" data-v="staff" class="${u.role === 'staff' ? 'on' : ''}">Staff</button><button type="button" data-v="admin" class="${u.role === 'admin' ? 'on' : ''}">Admin</button></div></div>
     <div class="field" id="uf-rest"><label>Restaurants this person can order for (none ticked = all)</label>${state.boot.restaurants.map((r) => `<label class="check"><input type="checkbox" value="${r.id}" ${sel.includes(r.id) ? 'checked' : ''}/> <span class="dot" style="--c:${r.color}"></span>${esc(r.name)}</label>`).join('')}</div>
     ${!isNew ? `<label class="check"><input type="checkbox" id="uf-a" ${u.active ? 'checked' : ''}/> Account is active</label>` : ''}
     ${locked ? `<label class="check" style="color:var(--bad)"><input type="checkbox" id="uf-unl" checked /> Unlock now (locked after wrong passwords)</label>` : ''}`,
   foot: `<button class="btn ghost" data-close>Cancel</button><button class="btn" id="uf-ok">Save</button>` });
-  let role = u.role;
+  let role = u.role, photo;
+  if ($('#uf-ph', m)) $('#uf-ph', m).onchange = async (e) => { const f = e.target.files[0]; if (!f) return; try { photo = await shrinkImage(f, 240); $('#uf-av', m).innerHTML = avatarHtml(u.display_name, photo, 'lg'); } catch { toast('Could not read that photo.', true); } };
+  if ($('#uf-rm', m)) $('#uf-rm', m).onclick = () => { photo = ''; $('#uf-av', m).innerHTML = avatarHtml(u.display_name, '', 'lg'); };
   const showRest = () => { $('#uf-rest', m).style.display = role === 'admin' ? 'none' : ''; };
   $$('#uf-r button', m).forEach((b) => b.onclick = () => { role = b.dataset.v; $$('#uf-r button', m).forEach((x) => x.classList.toggle('on', x === b)); showRest(); });
   showRest();
   $('#uf-ok', m).onclick = () => act($('#uf-ok', m), async () => {
-    const body = { name: $('#uf-n', m).value, role, restaurants: $$('#uf-rest input:checked', m).map((i) => Number(i.value)) };
+    const body = { name: $('#uf-n', m).value, position: $('#uf-pos', m).value, role, restaurants: $$('#uf-rest input:checked', m).map((i) => Number(i.value)) };
+    if (photo !== undefined) body.photo = photo;
     if (isNew) { body.username = $('#uf-u', m).value; body.password = $('#uf-p', m).value; await api('users', { method: 'POST', body }); }
     else { body.active = $('#uf-a', m).checked; if ($('#uf-p', m).value) body.password = $('#uf-p', m).value; if ($('#uf-unl', m)) body.unlock = $('#uf-unl', m).checked; await api('users/' + u.id, { method: 'PUT', body }); }
-    closeModal(); toast('User saved.'); pageSettings('users');
+    closeModal(); toast('User saved.'); if (!isNew && u.id === state.boot.user.id) await refreshBoot(); pageSettings('users');
   });
 }
 
