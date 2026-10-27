@@ -138,10 +138,10 @@ window.addEventListener('hashchange', () => { if (state.boot) route(); });
 function authShell(inner) {
   $('#app').innerHTML = `<div class="auth">
     <section class="auth-brand">
-      <svg class="ring" viewBox="0 0 200 200"><circle cx="100" cy="100" r="96" fill="none" stroke="#fff" stroke-width="1"/><circle cx="100" cy="100" r="70" fill="none" stroke="#fff" stroke-width="1"/><text x="100" y="114" text-anchor="middle" font-family="Space Mono" font-size="40" fill="#fff">Oe.</text></svg>
+      ${spinLogo()}
       <div class="brand-row">${markHtml()}<div><div class="wordmark">OrderEase<b>.</b></div><div class="tagline">every order, one tap away</div></div></div>
       <div>
-        <h1>Supplier orders for all four restaurants — <em>without typing codes.</em></h1>
+        <h1>Supplier orders for all four restaurants — <em class="typer">without typing codes.</em></h1>
         <p>Search the catalog, tap the quantity, and send the order to Gulfwest, Bidfood or any supplier with every code already filled in.</p>
         <div class="auth-steps">
           <div><span>01</span>Pick the restaurant and the supplier</div>
@@ -150,6 +150,7 @@ function authShell(inner) {
         </div>
       </div>
       <div class="tagline">Daily Edition · The Plane · Bupa</div>
+      <div class="auth-road" aria-hidden="true"><i class="road-line"></i><span class="auth-truck">${TRUCK}</span></div>
     </section>
     <section class="auth-form"><div class="auth-card">${inner}</div></section>
   </div>`;
@@ -278,26 +279,134 @@ function route() {
   (pages[p] || pageDashboard)();
 }
 
+
+// ================= ANIMATION & DECORATION =================
+const calm = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+// line-drawn delivery truck (faces right)
+const TRUCK = `<svg class="truck" viewBox="0 0 72 40" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <path class="tk-body" d="M3 30V9h40v21M43 15h13l9 9v6H43"/><path d="M47 18h7l5 6H47z"/>
+  <path class="tk-logo" d="M14 16h18M14 22h12"/>
+  <g class="tk-wheel"><circle cx="15" cy="32" r="5"/><path d="M15 28v8M11 32h8"/></g>
+  <g class="tk-wheel w2"><circle cx="55" cy="32" r="5"/><path d="M55 28v8M51 32h8"/></g>
+  <path class="tk-puff p1" d="M-2 28a2 2 0 1 0 0 .1"/><path class="tk-puff p2" d="M-6 25a3 3 0 1 0 0 .1"/></svg>`;
+const EMPTY_BOX = `<svg class="empty-box" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <path d="M10 24l22-10 22 10v24L32 58 10 48z"/><path d="M10 24l22 10 22-10M32 34v24"/><path class="eb-lid" d="M10 24L4 14l22-10 6 10M54 24l6-10-22-10-6 10"/></svg>`;
+function spinLogo() {
+  const txt = 'ORDEREASE · EVERY ORDER, ONE TAP AWAY · ';
+  return `<div class="spin-logo" aria-hidden="true"><svg viewBox="0 0 200 200">
+    <defs><path id="sl-c" d="M100 100m-78 0a78 78 0 1 1 156 0a78 78 0 1 1-156 0"/></defs>
+    <circle cx="100" cy="100" r="98" fill="#282828"/>
+    <g class="sl-ring"><text font-family="Space Mono, monospace" font-size="13.5" letter-spacing="2.2" fill="#EDE7DD"><textPath href="#sl-c">${txt}${txt}</textPath></text></g>
+    <text x="100" y="114" text-anchor="middle" font-family="Space Mono, monospace" font-size="40" fill="#F3F0EA">Oe<tspan fill="#D7A46E">.</tspan></text></svg></div>`;
+}
+function heroHtml(title, sub) {
+  return `<section class="hero"><div class="hero-txt"><div class="eyebrow" style="color:#9C968C">${esc(state.boot.settings.company)}</div><h1>${title}</h1><p>${sub}</p>
+    <a class="btn crema" href="#/new">${ic('plus')} New order</a></div><div class="hero-scene">${deliveryScene()}</div></section>`;
+}
+// Jeddah street at the hero: supplier warehouse → truck → the restaurants. Sky follows real Jeddah time.
+function deliveryScene() {
+  const rs = activeRest().slice(0, 4);
+  const stars = [[40, 18], [110, 40], [170, 14], [250, 30], [300, 12], [360, 26], [430, 14], [490, 38], [560, 20], [610, 44]]
+    .map(([x, y], i) => `<circle class="ds-star" cx="${x}" cy="${y}" r="1.3" style="animation-delay:${(i * 0.41) % 3}s"/>`).join('');
+  const shops = rs.map((r, i) => { const x = 420 + i * 54; return `<g class="ds-shop" style="--c:${r.color}">
+      <path class="ds-awn" d="M${x} 82h48l-3 9q-3.5 4-7 0q-3.5 4-7 0q-3.5 4-7 0q-3.5 4-7 0q-3.5 4-7 0q-3.5 4-7 0z"/>
+      <path d="M${x + 3} 91v27h42V91M${x + 9} 118v-17h11v17M${x + 26} 100h13v9h-13z"/>
+      <text x="${x + 24}" y="79" text-anchor="middle">${esc(r.short || '')}</text>
+      <circle class="ds-lamp" cx="${x + 32}" cy="104" r="1.6" style="animation-delay:${i * .5}s"/></g>`; }).join('');
+  return `<svg class="ds-svg" viewBox="0 0 640 150" preserveAspectRatio="xMidYMax meet" aria-hidden="true">
+    <defs><radialGradient id="ds-glow" cx="50%" cy="100%" r="80%"><stop offset="0%" stop-color="#D7A46E" stop-opacity=".28"/><stop offset="100%" stop-color="#D7A46E" stop-opacity="0"/></radialGradient></defs>
+    <rect class="ds-glowr" width="640" height="150" fill="url(#ds-glow)"/>
+    <g class="ds-stars">${stars}</g>
+    <g class="ds-sun"><circle r="10" class="ds-sun-disc"/><circle r="16" class="ds-sun-ring"/></g>
+    <g class="ds-moon"><path d="M6 -10a11 11 0 1 0 0 20a8.5 8.5 0 1 1 0 -20z"/></g>
+    <g class="ds-clouds"><path class="ds-cloud c1" d="M0 0h34a8 8 0 0 0-8-8a10 10 0 0 0-18-2a7 7 0 0 0-8 10z"/><path class="ds-cloud c2" d="M0 0h26a6 6 0 0 0-6-6a8 8 0 0 0-14-1a5 5 0 0 0-6 7z"/></g>
+    <g class="ds-line">
+      <path d="M18 118V74l46-20 46 20v44"/><path d="M34 118V92h60v26M34 99h60M34 106h60M34 113h60"/><path d="M42 80h44"/>
+      <text class="ds-sign" x="64" y="76" text-anchor="middle">SUPPLIER</text>
+      <g class="ds-boxes"><path d="M116 118v-10h12v10zM130 118v-10h12v10zM123 108v-10h12v10z"/></g>
+      <path d="M176 118c2-14 1-28-3-40"/><path d="M173 78c-10-6-20-4-26 2M173 78c-4-9-12-13-20-12M173 78c8-8 18-9 25-4M173 78c5-8 13-10 20-7"/>
+      <g class="ds-jet"><path d="M300 117V40"/><path class="ds-spray" d="M300 40c-8 1-13 11-15 26M300 40c8 1 13 11 15 26"/></g><path d="M290 118c3-3 17-3 20 0"/>
+      <circle class="ds-drop d1" cx="293" cy="68" r="1.2"/><circle class="ds-drop d2" cx="307" cy="70" r="1.2"/><circle class="ds-drop d3" cx="298" cy="74" r="1"/>
+      <path d="M352 118V96h36v22M358 96a12 12 0 0 1 24 0M370 84v-4M396 118V70M392 74h8M394 70l2-6l2 6"/>
+      ${shops}
+      <path d="M0 120h640"/>
+    </g>
+    <path class="ds-dash" d="M0 136h640"/>
+    <g class="ds-truck-move"><g class="ds-truck" transform="translate(0 99) scale(.82)">${TRUCK.replace('<svg class="truck" viewBox="0 0 72 40"', '<svg x="0" y="0" width="72" height="40" viewBox="0 0 72 40" class="truck"')}</g></g>
+  </svg>
+  <div class="ds-label"><span class="ds-dot"></span>JEDDAH · <b class="ds-time">--:--</b> · <span class="ds-phase"></span></div>`;
+}
+function jeddahNow() {
+  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Riyadh', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date());
+  const h = +parts.find((p) => p.type === 'hour').value % 24, m = +parts.find((p) => p.type === 'minute').value;
+  return { t: h + m / 60, label: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}` };
+}
+function updateScene() {
+  const svg = $('.ds-svg'); if (!svg) return false;
+  const { t, label } = jeddahNow();
+  const phase = t < 5 ? 'Night' : t < 7 ? 'Sunrise' : t < 11 ? 'Morning' : t < 15 ? 'Afternoon' : t < 17.5 ? 'Late afternoon' : t < 19 ? 'Sunset' : 'Night';
+  const arc = (p) => ({ x: 30 + p * 580, y: 108 - Math.sin(p * Math.PI) * 84 });
+  const sun = arc(Math.min(1, Math.max(0, (t - 6) / 12.5)));
+  const moon = arc(Math.min(1, Math.max(0, (t >= 18.5 ? t - 18.5 : t + 5.5) / 11.5)));
+  $('.ds-sun', svg).setAttribute('transform', `translate(${sun.x} ${sun.y})`);
+  $('.ds-moon', svg).setAttribute('transform', `translate(${moon.x} ${moon.y})`);
+  svg.dataset.night = t < 5.75 || t >= 18.75 ? '1' : '0';
+  svg.dataset.glow = (t >= 5.5 && t < 7.5) || (t >= 16.75 && t < 19.25) ? '1' : '0';
+  $('.ds-time').textContent = label; $('.ds-phase').textContent = phase;
+  return true;
+}
+let sceneTimer = null;
+function startScene() { clearInterval(sceneTimer); if (updateScene()) sceneTimer = setInterval(() => { if (!updateScene()) clearInterval(sceneTimer); }, 30000); }
+// numbers roll up from 0
+function countUp(root) {
+  $$('[data-count]', root).forEach((el) => {
+    const end = Number(el.dataset.count) || 0, dec = Number(el.dataset.dec) || 0;
+    const show = (v) => { el.textContent = dec ? fmtNum(v, dec) : Math.round(v).toLocaleString('en-US'); };
+    if (calm() || !end) return show(end);
+    const t0 = performance.now(), dur = 900;
+    const step = (now) => { const k = Math.min(1, (now - t0) / dur); show(end * (1 - Math.pow(1 - k, 3))); if (k < 1) requestAnimationFrame(step); };
+    requestAnimationFrame(step);
+  });
+}
+// cart: a little truck that fills with boxes as items are added
+function cartTruck(n) {
+  const boxes = Math.min(n, 6);
+  const pos = [[6, 18], [16, 18], [26, 18], [36, 18], [11, 9], [21, 9]];
+  return `<span class="cart-truck ${n ? 'loaded' : ''}" title="${n} item${n === 1 ? '' : 's'} in the order"><svg viewBox="-2 0 74 44" fill="none" aria-hidden="true">
+    ${pos.slice(0, boxes).map(([x, y], i) => `<rect class="ct-box ${i === boxes - 1 && state.ob && state.ob.bump ? 'new' : ''}" x="${x}" y="${y}" width="9" height="9" rx="1.5"/>`).join('')}
+    <g stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 30v-3h42v3M45 15h11l9 9v6H45z"/><path d="M48 18h7l5 6H48z"/>
+    <circle class="ct-w" cx="15" cy="33" r="5"/><circle class="ct-w" cx="55" cy="33" r="5"/></g></svg></span>`;
+}
+// small burst of brand-coloured confetti
+function confetti(from) {
+  if (calm() || !from) return;
+  const r = from.getBoundingClientRect(), cols = ['#D7A46E', '#5A4636', '#E8902A', '#3F7D63', '#6D5BA8', '#282828'];
+  const layer = document.createElement('div'); layer.className = 'confetti'; layer.style.left = r.left + r.width / 2 + 'px'; layer.style.top = r.top + 'px';
+  layer.innerHTML = Array.from({ length: 26 }, (_, i) => { const a = (i / 26) * Math.PI * 2, d = 60 + Math.random() * 70;
+    return `<i style="--x:${Math.cos(a) * d}px;--y:${Math.sin(a) * d - 50}px;--r:${Math.random() * 540}deg;background:${cols[i % cols.length]};animation-delay:${Math.random() * .08}s"></i>`; }).join('');
+  document.body.appendChild(layer); setTimeout(() => layer.remove(), 1300);
+}
+
 // ================= DASHBOARD =================
 async function pageDashboard() {
   const u = state.boot.user;
   const hr = new Date().getHours();
   const hi = hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening';
-  const main = shell('dashboard', pageHead(`${hi}, ${esc(u.name.split(' ')[0])}`, `${fmtDate(today())} · here is how ordering looks this month.`,
-    `<a class="btn crema" href="#/new">${ic('plus')} New order</a>`) + loading());
+  const hero = (dt) => heroHtml(`${hi}, ${esc(u.name.split(' ')[0])}`, `${fmtDate(dt)} · here is how ordering looks this month.`);
+  const main = shell('dashboard', hero(today()) + loading());
+  startScene();
   try {
     const d = await api('dashboard');
     const rmap = Object.fromEntries(d.by_restaurant.map((r) => [r.id, r]));
     const max14 = Math.max(1, ...d.days.map((x) => x.total || 0));
     const days = Array.from({ length: 14 }, (_, i) => addDays(d.today, i - 13));
     const dmap = Object.fromEntries(d.days.map((x) => [x.d, x]));
-    main.innerHTML = pageHead(`${hi}, ${esc(u.name.split(' ')[0])}`, `${fmtDate(d.today)} · here is how ordering looks this month.`,
-      `<a class="btn crema" href="#/new">${ic('plus')} New order</a>`) + `
+    main.innerHTML = hero(d.today) + `
       <div class="kpis">
-        <div class="card kpi dark"><div class="k">Spent in ${MONTHS_L[Number(d.month.slice(5)) - 1]}</div><div class="v">${fmtNum(d.month_totals.total)}<small>${cur()}</small></div></div>
-        <div class="card kpi"><div class="k">${ic('list')} Orders this month</div><div class="v">${d.month_totals.orders}</div></div>
-        <div class="card kpi ${d.open ? 'warn' : ''}"><div class="k">${ic('truck')} Waiting for delivery</div><div class="v">${d.open}</div></div>
-        <a class="card kpi ${d.no_code ? 'warn' : ''}" href="#/catalog" style="text-decoration:none;color:inherit"><div class="k">${ic('alert')} Items with no code</div><div class="v">${d.no_code}</div></a>
+        <div class="card kpi dark"><div class="k">Spent in ${MONTHS_L[Number(d.month.slice(5)) - 1]}</div><div class="v"><span data-count="${d.month_totals.total}" data-dec="2">0</span><small>${cur()}</small></div></div>
+        <div class="card kpi"><div class="k">${ic('list')} Orders this month</div><div class="v"><span data-count="${d.month_totals.orders}">0</span></div></div>
+        <div class="card kpi ${d.open ? 'warn' : ''}"><div class="k">${ic('truck')} Waiting for delivery</div><div class="v"><span data-count="${d.open}">0</span></div></div>
+        <a class="card kpi ${d.no_code ? 'warn' : ''}" href="#/catalog" style="text-decoration:none;color:inherit"><div class="k">${ic('alert')} Items with no code</div><div class="v"><span data-count="${d.no_code}">0</span></div></a>
       </div>
       <div class="rest-grid">${activeRest().map((r) => { const x = rmap[r.id] || { orders: 0, total: 0 }; return `
         <a class="card rest" style="--c:${r.color};text-decoration:none;color:inherit" href="#/new?r=${r.id}" data-rest="${r.id}">
@@ -310,7 +419,7 @@ async function pageDashboard() {
           ${d.recent.map((o) => `<tr class="click" data-go="#/orders/${o.id}"><td><span class="mono" style="font-size:13px">${esc(o.order_no)}</span></td>
             <td><span class="tag"><span class="dot" style="--c:${o.restaurant_color}"></span>${esc(o.restaurant)}</span></td><td>${esc(o.supplier)}</td>
             <td class="hide-sm">${fmtDate(o.order_date)}</td><td><span class="pill ${o.status}">${o.status}</span></td></tr>`).join('')}
-          </tbody></table></div>` : `<div class="empty"><b>No orders yet</b>Tap “New order” to make the first one.</div>`}
+          </tbody></table></div>` : `<div class="empty">${EMPTY_BOX}<b>No orders yet</b>Tap “New order” to make the first one.</div>`}
         </div>
         <div class="card"><div class="card-head"><h3>Last 14 days</h3><span class="muted" style="font-size:12.5px">${cur()} per day</span></div>
           <div style="padding:16px 18px">
@@ -321,6 +430,7 @@ async function pageDashboard() {
         </div>
       </div>`;
     $$('[data-go]', main).forEach((tr) => tr.onclick = () => { location.hash = tr.dataset.go; });
+    startScene(); countUp(main);
   } catch (e) { if (e.message !== 'Session ended') main.innerHTML += `<div class="form-error">${esc(e.message)}</div>`; }
 }
 
@@ -465,7 +575,7 @@ function renderProductList() {
   if (ob.usualOnly) list = list.filter((p) => ob.usual[p.id]);
   list = [...list].sort((a, b) => (ob.usual[b.id] || 0) - (ob.usual[a.id] || 0) || String(a.name).localeCompare(b.name));
   if (!list.length) {
-    el.innerHTML = `<div class="empty"><b>${(state.products[ob.sid] || []).length ? 'Nothing matches' : 'No items for this supplier yet'}</b>
+    el.innerHTML = `<div class="empty">${EMPTY_BOX}<b>${(state.products[ob.sid] || []).length ? 'Nothing matches' : 'No items for this supplier yet'}</b>
       ${isAdmin() ? `Add items in <a href="#/catalog">Catalog</a> or import an Excel file.` : 'Ask an Admin to add items to the catalog.'}
       <div style="margin-top:12px"><button class="btn ghost sm" id="addx2">${ic('plus')} Add “${esc(ob.q || 'an item')}” to this order</button></div></div>`;
     $('#addx2').onclick = () => addCustomItem(ob.q);
@@ -473,7 +583,7 @@ function renderProductList() {
   }
   el.innerHTML = list.map((p) => {
     const it = ob.items.get('p' + p.id);
-    return `<div class="prow ${it ? 'in' : ''}" data-p="${p.id}">${thumbHtml(p)}
+    return `<div class="prow ${it ? 'in' : ''} ${ob.flash === p.id ? 'flash' : ''}" data-p="${p.id}">${thumbHtml(p)}
       <div><div class="pname">${esc(p.name)}</div><div class="pmeta">${codeHtml(p.code)}${p.pack ? `<span>${esc(p.pack)}</span>` : ''}${p.unit ? `<span>/ ${esc(p.unit)}</span>` : ''}${p.price ? `<span>· ${money(p.price)}</span>` : ''}
         ${ob.usual[p.id] ? `<span class="star">★ ordered ${ob.usual[p.id]}×${ob.last[p.id] ? ` · last ${fmtQty(ob.last[p.id])}` : ''}</span>` : ''}</div></div>
       <div class="ctl">${it ? stepperHtml(it.qty, p.id) : `<button class="add-btn" data-add="${p.id}">+ Add</button>`}</div></div>`;
@@ -492,6 +602,7 @@ function bindSteppers(root, cb) {
 }
 function setQty(p, q) {
   const ob = state.ob, key = 'p' + p.id;
+  ob.bump = !ob.items.has(key) && q > 0; ob.flash = q > 0 && !ob.items.has(key) ? p.id : null;
   if (q > 0) {
     const cur = ob.items.get(key);
     if (cur) cur.qty = q; else ob.items.set(key, { product_id: p.id, code: p.code, name: p.name, pack: p.pack, unit: p.unit, price: p.price, qty: q });
@@ -525,7 +636,7 @@ function renderCart() {
   const total = items.reduce((s, [, it]) => s + (it.price ? it.price * it.qty : 0), 0);
   const noCode = items.filter(([, it]) => !it.code).length;
   const r = restById(ob.rid), s = supById(ob.sid);
-  el.innerHTML = `<div class="cart-head"><h3>${ic('cart')} Order <span class="count">${items.length}</span></h3><button class="x" id="cart-close" aria-label="Close" style="display:none">×</button></div>
+  el.innerHTML = `<div class="cart-head"><h3>${ic('cart')} Order <span class="count ${ob.bump ? 'bump' : ''}">${items.length}</span></h3>${cartTruck(items.length)}<button class="x" id="cart-close" aria-label="Close" style="display:none">×</button></div>
     <div class="cart-to"><span><b>For</b> ${esc(r.name)}</span><span><b>To</b> ${esc(s.name)}</span></div>
     <div class="cart-items">${items.length ? items.map(([k, it]) => `<div class="citem"><div><div class="n">${esc(it.name)}</div>
       <div class="m">${codeHtml(it.code)}${it.pack ? esc(it.pack) : ''}</div></div>${stepperHtml(it.qty, k)}</div>`).join('')
@@ -562,6 +673,7 @@ function placeOrder(btn) {
     } else {
       const r = await api('orders', { method: 'POST', body });
       clearDraft(ob.rid, ob.sid);
+      const tr = $('.cart-truck'); if (tr && !calm()) { tr.classList.add('go'); await new Promise((res) => setTimeout(res, 750)); }
       toast(`Order ${r.order_no} placed.`); location.hash = '#/orders/' + r.id + '?sent=1';
     }
   });
@@ -580,12 +692,13 @@ async function pageOrder(id) {
   try { d = await api('orders/' + id); } catch (e) { main.innerHTML = `<div class="form-error">${esc(e.message)}</div>`; return; }
   const o = d.order, items = d.items, msg = waText(o, items);
   const justSent = /sent=1/.test(location.hash);
+  if (justSent) history.replaceState(null, '', '#/orders/' + id);
   const phone = String(o.supplier_phone || '').replace(/[^\d]/g, '');
   const canEdit = o.status === 'ordered' || isAdmin();
   main.innerHTML = pageHead(`<span class="mono">${esc(o.order_no)}</span>`, '', `
       <span class="pill ${o.status}" style="font-size:13px;padding:6px 12px">${o.status === 'ordered' ? 'Waiting for delivery' : o.status}</span>`,
       `<a href="#/orders" style="color:inherit">← Orders</a>`) + `
-    ${justSent ? `<div class="card card-pad" style="margin-bottom:18px;background:#EAF6EE;border-color:#C7E7D2"><b>Order saved.</b> Now send it to ${esc(o.supplier)}: copy the message or open WhatsApp below.</div>` : ''}
+    ${justSent ? `<div class="card sent-banner"><div class="sb-road" aria-hidden="true"><i class="road-line"></i><span class="sb-truck">${TRUCK}</span></div><div class="sb-text"><b>Order saved.</b> Now send it to ${esc(o.supplier)}: copy the message or open WhatsApp.</div></div>` : ''}
     <div class="cols">
       <div class="stack">
         <div class="card">
@@ -633,7 +746,7 @@ async function pageOrder(id) {
   };
   $('#po').onclick = () => act($('#po'), () => poPdf(o, items));
   const setStatus = (s, label) => act(null, async () => { await api(`orders/${o.id}/status`, { method: 'POST', body: { status: s } }); toast(label); pageOrder(o.id); });
-  if ($('#rcv')) $('#rcv').onclick = () => setStatus('received', 'Marked as received.');
+  if ($('#rcv')) $('#rcv').onclick = () => { confetti($('#rcv')); setStatus('received', 'Marked as received. ✓'); };
   if ($('#cnl')) $('#cnl').onclick = async () => { if (await confirmBox('Cancel this order?', 'It stays in the history but is left out of reports.', 'Cancel order', true)) setStatus('cancelled', 'Order cancelled.'); };
   if ($('#reopen')) $('#reopen').onclick = () => setStatus('ordered', 'Order is waiting for delivery again.');
   if ($('#del')) $('#del').onclick = async () => {
@@ -719,7 +832,7 @@ async function pageOrders() {
         ${orders.map((o) => `<tr class="click" data-go="#/orders/${o.id}"><td class="mono" style="font-size:13px">${esc(o.order_no)}</td><td>${fmtDate(o.order_date)}</td>
           <td><span class="tag"><span class="dot" style="--c:${o.restaurant_color}"></span>${esc(o.restaurant)}</span></td><td>${esc(o.supplier)}</td>
           <td class="r num hide-sm">${o.items_count}</td><td class="r num">${money(o.total)}</td><td><span class="pill ${o.status}">${o.status}</span></td></tr>`).join('')}</tbody></table></div>`
-        : `<div class="empty"><b>No orders found</b>Try a wider date range or clear the filters.</div>`;
+        : `<div class="empty">${EMPTY_BOX}<b>No orders found</b>Try a wider date range or clear the filters.</div>`;
       $$('[data-go]', el).forEach((tr) => tr.onclick = () => { location.hash = tr.dataset.go; });
     } catch (e) { toast(e.message, true); }
   };
@@ -766,7 +879,7 @@ function drawCatalog() {
     (rows.length ? `<div class="table-wrap"><table class="t"><thead><tr><th></th><th>Code</th><th>Item</th><th class="hide-sm">Category</th><th class="hide-sm">Pack</th><th class="r">Price</th><th class="r hide-sm">Ordered</th></tr></thead><tbody>
       ${rows.map((p) => `<tr class="${isAdmin() ? 'click' : ''} ${p.active ? '' : 'off'}" data-p="${p.id}"><td style="width:58px">${thumbHtml(p)}</td><td>${codeHtml(p.code)}</td><td><b>${esc(p.name)}</b>${p.active ? '' : ' <span class="muted">(hidden)</span>'}${p.unit ? `<div class="muted" style="font-size:12.5px">per ${esc(p.unit)}</div>` : ''}</td>
         <td class="hide-sm">${esc(p.category || '')}</td><td class="hide-sm">${esc(p.pack || '')}</td><td class="r num">${p.price ? fmtNum(p.price) : '—'}</td><td class="r num hide-sm">${p.used || ''}</td></tr>`).join('')}</tbody></table></div>`
-    : `<div class="empty"><b>${catRows.length ? 'Nothing matches' : 'No items for this supplier yet'}</b>${isAdmin() ? 'Use “Add item” or “Import Excel”.' : ''}</div>`);
+    : `<div class="empty">${EMPTY_BOX}<b>${catRows.length ? 'Nothing matches' : 'No items for this supplier yet'}</b>${isAdmin() ? 'Use “Add item” or “Import Excel”.' : ''}</div>`);
   if (isAdmin()) $$('[data-p]', el).forEach((tr) => tr.onclick = () => productForm(catRows.find((p) => p.id === Number(tr.dataset.p))));
 }
 function productForm(p) {
@@ -1024,11 +1137,11 @@ function drawReport() {
       </div>`;
     else if (rep.tab === 'restaurants') tab.innerHTML = d.matrix.length ? `<div class="table-wrap"><table class="t"><thead><tr><th>Restaurant</th><th>Supplier</th><th class="r">Orders</th><th class="r">Spend</th></tr></thead><tbody>
       ${d.matrix.map((m) => `<tr><td><b>${esc(m.restaurant)}</b></td><td>${esc(m.supplier)}</td><td class="r num">${m.orders}</td><td class="r num">${money(m.total)}</td></tr>`).join('')}</tbody>
-      <tfoot><tr><td colspan="2">Total</td><td class="r num">${T.orders}</td><td class="r num">${money(T.total)}</td></tr></tfoot></table></div>` : '<div class="empty">No orders in this period.</div>';
+      <tfoot><tr><td colspan="2">Total</td><td class="r num">${T.orders}</td><td class="r num">${money(T.total)}</td></tr></tfoot></table></div>` : `<div class="empty">${EMPTY_BOX}No orders in this period.</div>`;
     else if (rep.tab === 'items') tab.innerHTML = d.items.length ? `<div class="table-wrap"><table class="t"><thead><tr><th>Code</th><th>Item</th><th class="hide-sm">Supplier</th><th class="r">Qty</th><th class="r hide-sm">Orders</th><th class="r">Value</th></tr></thead><tbody>
-      ${d.items.map((it) => `<tr><td>${codeHtml(it.code)}</td><td><b>${esc(it.name)}</b>${it.pack ? ` <span class="muted">${esc(it.pack)}</span>` : ''}</td><td class="hide-sm">${esc(it.supplier)}</td><td class="r num">${fmtQty(it.qty)} ${esc(it.unit || '')}</td><td class="r num hide-sm">${it.orders}</td><td class="r num">${money(it.value)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">No items in this period.</div>';
+      ${d.items.map((it) => `<tr><td>${codeHtml(it.code)}</td><td><b>${esc(it.name)}</b>${it.pack ? ` <span class="muted">${esc(it.pack)}</span>` : ''}</td><td class="hide-sm">${esc(it.supplier)}</td><td class="r num">${fmtQty(it.qty)} ${esc(it.unit || '')}</td><td class="r num hide-sm">${it.orders}</td><td class="r num">${money(it.value)}</td></tr>`).join('')}</tbody></table></div>` : `<div class="empty">${EMPTY_BOX}No items in this period.</div>`;
     else tab.innerHTML = d.orders.length ? `<div class="table-wrap"><table class="t"><thead><tr><th>Order</th><th>Date</th><th>Restaurant</th><th>Supplier</th><th class="r">Total</th><th>Status</th></tr></thead><tbody>
-      ${d.orders.map((o) => `<tr class="click" data-go="#/orders/${o.id}"><td class="mono" style="font-size:13px">${esc(o.order_no)}</td><td>${fmtDate(o.order_date)}</td><td>${esc(o.restaurant)}</td><td>${esc(o.supplier)}</td><td class="r num">${money(o.total)}</td><td><span class="pill ${o.status}">${o.status}</span></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">No orders in this period.</div>';
+      ${d.orders.map((o) => `<tr class="click" data-go="#/orders/${o.id}"><td class="mono" style="font-size:13px">${esc(o.order_no)}</td><td>${fmtDate(o.order_date)}</td><td>${esc(o.restaurant)}</td><td>${esc(o.supplier)}</td><td class="r num">${money(o.total)}</td><td><span class="pill ${o.status}">${o.status}</span></td></tr>`).join('')}</tbody></table></div>` : `<div class="empty">${EMPTY_BOX}No orders in this period.</div>`;
     $$('[data-go]', tab).forEach((tr) => tr.onclick = () => { location.hash = tr.dataset.go; });
   };
   $$('.tabs button', el).forEach((b) => b.onclick = () => { rep.tab = b.dataset.t; drawTab(); });
