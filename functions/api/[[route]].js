@@ -621,7 +621,7 @@ export async function onRequest(context) {
         if (Number(f.get('restaurant'))) { sql += ' AND o.restaurant_id = ?'; args.push(Number(f.get('restaurant'))); }
         if (Number(f.get('supplier'))) { sql += ' AND o.supplier_id = ?'; args.push(Number(f.get('supplier'))); }
         if (['ordered', 'received', 'cancelled'].includes(f.get('status'))) { sql += ' AND o.status = ?'; args.push(f.get('status')); }
-        if (f.get('q')) { sql += ' AND (o.order_no LIKE ? OR o.note LIKE ? OR EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id = o.id AND (oi.name LIKE ? OR oi.code LIKE ?)))'; const q = '%' + str(f.get('q'), 60) + '%'; args.push(q, q, q, q); }
+        if (f.get('q')) { sql += ' AND (o.order_no LIKE ? OR o.note LIKE ? OR EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id = o.id AND (oi.name LIKE ? OR oi.code LIKE ?)))'; const q = '%' + str(f.get('q'), 60).replace(/^\s*(order|po)\s*(no\.?|#)?\s*/i, '').trim() + '%'; args.push(q, q, q, q); }
         const rf = rFilter(user); sql += rf.sql; args.push(...rf.args);
         sql += ' ORDER BY o.order_date DESC, o.id DESC LIMIT ' + Math.min(500, Number(f.get('limit')) || 200);
         const { results } = await env.DB.prepare(sql).bind(...args).all();

@@ -1122,7 +1122,7 @@ async function pageOrder(id) {
           <div class="msg" id="msg">${esc(msg)}</div>
           <div class="actions">
             <button class="btn" id="cp">${ic('copy')} Copy message</button>
-            <a class="btn wa" target="_blank" rel="noopener" href="https://wa.me/${phone}?text=${encodeURIComponent(msg)}">${ic('wa')} WhatsApp${phone ? '' : ' (pick chat)'}</a>
+            <a class="btn wa" id="wa" target="_blank" rel="noopener" href="${waLink(phone, msg)}">${ic('wa')} ${phone ? 'Send on WhatsApp' : 'Open WhatsApp'}</a>
           </div>
           <div class="actions">
             <button class="btn ghost" id="po">${ic('pdf')} Purchase order PDF</button>
@@ -1132,6 +1132,7 @@ async function pageOrder(id) {
         </div>
       </div>
     </div>`;
+  $('#wa').addEventListener('click', () => { copyText(msg).then((ok) => { if (ok) toast(phone ? 'Opening the supplier chat — the message is ready to send.' : 'Message copied ✓ — open the supplier chat and paste it (Cmd/Ctrl + V).'); }); });
   $('#cp').onclick = async () => {
     try { await navigator.clipboard.writeText(msg); toast('Message copied — paste it in WhatsApp.'); }
     catch { const r = document.createRange(); r.selectNodeContents($('#msg')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); toast('Press Copy on the highlighted text.'); }
@@ -1147,6 +1148,15 @@ async function pageOrder(id) {
     }
   };
 }
+
+
+// WhatsApp link: with a number it opens that chat with the message filled in; without one it opens WhatsApp to pick the chat
+function waLink(phone, msg) {
+  const t = encodeURIComponent(msg), mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  if (phone) return `https://wa.me/${phone}?text=${t}`;
+  return mobile ? `whatsapp://send?text=${t}` : `https://web.whatsapp.com/send?text=${t}`;
+}
+async function copyText(t) { try { await navigator.clipboard.writeText(t); return true; } catch { return false; } }
 
 // ---------- PDF helpers ----------
 let logoData = null;
