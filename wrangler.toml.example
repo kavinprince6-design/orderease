@@ -1,0 +1,12 @@
+name = "orderease"
+pages_build_output_dir = "public"
+compatibility_date = "2024-09-23"
+
+[vars]
+TIMEZONE = "Asia/Riyadh"          # restaurant local time — decides what "today" is
+SESSION_IDLE_MINUTES = "30"       # auto log-out after this many idle minutes
+
+[[d1_databases]]
+binding = "DB"
+database_name = "orderease"
+database_id = "PUT-YOUR-DATABASE-ID-HERE"

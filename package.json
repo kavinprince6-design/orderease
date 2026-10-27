@@ -1,0 +1,12 @@
+{
+  "name": "orderease",
+  "version": "1.0.0",
+  "description": "OrderEase — supplier ordering for 4 restaurants (Cloudflare Pages + D1)",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler pages dev public --d1 DB=orderease"
+  },
+  "devDependencies": {
+    "wrangler": "^3.114.17"
+  }
+}
