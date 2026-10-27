@@ -164,7 +164,7 @@ function showLogin(msg) {
     ${msg ? `<div class="form-error" style="background:var(--warn-bg);color:var(--warn)">${esc(msg)}</div>` : ''}
     <form id="lf" autocomplete="on">
       <div id="lf-err"></div>
-      <div class="field"><label for="lu">Username</label><input class="input" id="lu" name="username" autocomplete="username" required /></div>
+      <div class="field"><label for="lu">Username or full name</label><input class="input" id="lu" name="username" autocomplete="username" required /></div>
       <div class="field"><label for="lp">Password</label><div class="pw-wrap"><input class="input" id="lp" name="password" type="password" autocomplete="current-password" required /><button type="button">Show</button></div></div>
       <button class="btn block" type="submit">${ic('lock')} Log in</button>
     </form>

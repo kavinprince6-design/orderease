@@ -141,7 +141,12 @@ const publicUser = (u) => ({ id: u.id, username: u.username, name: u.name, role:
 async function login(env, request, body) {
   const username = str(body.username, 60), password = String(body.password || '');
   if (!username || !password) return err('Enter your username and password.');
-  const u = await env.DB.prepare('SELECT * FROM users WHERE username = ?').bind(username).first();
+  let u = await env.DB.prepare('SELECT * FROM users WHERE username = ?').bind(username).first();
+  if (!u) {
+    // also accept the person's full name (e.g. "Michael") when it belongs to exactly one account
+    const { results } = await env.DB.prepare('SELECT * FROM users WHERE lower(trim(display_name)) = lower(?) LIMIT 2').bind(username).all();
+    if (results.length === 1) u = results[0];
+  }
   const t = now();
   if (!u || !u.active) { await audit(env, username, 'login_failed', 'Unknown or inactive user'); return err('Wrong username or password.', 401); }
   if (u.locked_until && u.locked_until > t) {
