@@ -143,6 +143,7 @@ function authShell(inner) {
   $('#app').innerHTML = `<div class="auth">
     <section class="auth-brand">
       ${spinLogo()}
+      ${desertScene()}
       <div class="brand-row auth-logo">${brandBadge()}<div><div class="wordmark wm-anim">${'OrderEase'.split('').map((c, i) => `<i style="--i:${i}">${c}</i>`).join('')}<b class="wm-dot">.</b></div>
         <div class="tagline tag-rot"><span class="tr-text">every order, one tap away</span><span class="tr-caret"></span></div></div></div>
       <div>
@@ -161,7 +162,7 @@ function authShell(inner) {
       <div class="af-float" aria-hidden="true">${FLOATERS}</div>
       <div class="auth-card">${welcomeTruck()}${inner}</div></section>
   </div>`;
-  rotateTagline(); parkTruck();
+  rotateTagline(); parkTruck(); paintDesert();
   $$('.pw-wrap button').forEach((b) => b.addEventListener('click', () => {
     const i = b.previousElementSibling; i.type = i.type === 'password' ? 'text' : 'password'; b.textContent = i.type === 'password' ? 'Show' : 'Hide';
   }));
@@ -209,6 +210,59 @@ function showSetup() {
       } catch (er) { $('#sf-err').innerHTML = `<div class="form-error">${esc(er.message)}</div>`; shake(); }
     });
   };
+}
+
+
+// ---------- login: desert with a camel rider (sky follows Jeddah time) ----------
+const CAMEL = `<g class="camel">
+  <g class="cm-leg back l1"><path d="M40 58 L38 72 L41 86"/><path d="M38 86h6"/></g>
+  <g class="cm-leg front l1"><path d="M80 58 L82 72 L80 86"/><path d="M78 86h6"/></g>
+  <g class="cm-bob">
+    <path class="cm-body" d="M28 56 Q27 44 40 42 Q46 29 57 36 Q63 29 71 40 Q76 46 82 44 L89 31 Q92 24 99 25 L104 28 Q104 31 100 32 L96 33 L89 56 Q85 63 74 63 L40 63 Q30 63 28 56 Z"/>
+    <path d="M28 52 q-6 4 -4 13"/><circle cx="99" cy="28" r=".9" class="cm-eye"/>
+    <path class="cm-rug" d="M47 39 Q57 33 66 39 L64 47 Q56 44 49 47 Z"/>
+    <path class="cm-tassel" d="M49 47 v5 M54 46 v5 M59 46 v5 M64 47 v5"/>
+    <g class="cm-rider">
+      <path class="cm-robe" d="M53 37 L51 20 Q55 16 59 20 L60 37 Z"/>
+      <circle cx="55" cy="14" r="4.2" class="cm-head"/>
+      <path class="cm-ghutra" d="M50.5 12 Q55 7 59.5 12 L60 16 L56 15 L48 23 Z"/>
+      <path d="M58 24 Q74 26 98 29" class="cm-rein"/>
+      <path d="M57 36 L63 46 L61 50"/>
+    </g>
+  </g>
+  <g class="cm-leg back l2"><path d="M44 58 L45 72 L43 86"/><path d="M41 86h6"/></g>
+  <g class="cm-leg front l2"><path d="M76 58 L74 72 L76 86"/><path d="M74 86h6"/></g>
+</g>`;
+function desertScene() {
+  const stars = [[60, 22], [140, 48], [210, 16], [300, 38], [380, 14], [450, 44], [520, 20], [600, 36], [660, 12], [250, 70], [560, 66]]
+    .map(([x, y], i) => `<circle class="ds-star" cx="${x}" cy="${y}" r="1.2" style="animation-delay:${(i * .37) % 3}s"/>`).join('');
+  return `<div class="desert" aria-hidden="true"><svg class="dz-svg" viewBox="0 0 700 230" preserveAspectRatio="xMidYMax slice">
+    <defs><linearGradient id="dz-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#D7A46E" stop-opacity="0"/><stop offset="1" stop-color="#D7A46E" stop-opacity=".22"/></linearGradient></defs>
+    <rect class="dz-glow" width="700" height="230" fill="url(#dz-sky)"/>
+    <g class="dz-stars">${stars}</g>
+    <g class="dz-sun"><circle r="14" class="dz-sun-disc"/><circle r="22" class="dz-sun-ring"/></g>
+    <g class="dz-moon"><path d="M7 -12a13 13 0 1 0 0 24a10 10 0 1 1 0 -24z"/></g>
+    <path class="dz-bird b1" d="M0 0 q4 -4 8 0 q4 -4 8 0"/><path class="dz-bird b2" d="M0 0 q3 -3 6 0 q3 -3 6 0"/>
+    <path class="dz-mtn far" d="M0 150 L60 112 L95 128 L150 86 L205 124 L250 104 L300 132 L360 92 L420 126 L470 100 L530 130 L590 96 L650 122 L700 108 L700 230 L0 230 Z"/>
+    <path class="dz-mtn mid" d="M0 168 L80 136 L130 152 L190 124 L260 156 L330 138 L400 160 L480 132 L560 158 L630 140 L700 154 L700 230 L0 230 Z"/>
+    <path class="dz-dune d1" d="M0 186 Q120 160 240 178 T480 172 T700 176 L700 230 L0 230 Z"/>
+    <g class="dz-palms"><path d="M612 182c1-12 0-22-3-30"/><path d="M609 152c-8-5-16-3-21 2M609 152c-3-7-10-10-16-9M609 152c6-6 14-7 20-3M609 152c4-6 10-8 16-5"/>
+      <path d="M632 184c-1-9 0-16 3-22"/><path d="M635 162c-6-3-12-2-16 2M635 162c5-4 11-4 15-1M635 162c-2-5-6-7-10-7"/></g>
+    <g class="dz-walk"><g transform="translate(0 104) scale(1.06)">${CAMEL}</g></g>
+    <path class="dz-dune d2" d="M0 204 Q160 186 330 200 T700 196 L700 230 L0 230 Z"/>
+    <g class="dz-sand"><circle cx="40" cy="200" r="1"/><circle cx="160" cy="194" r="1.2"/><circle cx="300" cy="206" r=".9"/><circle cx="420" cy="198" r="1.1"/><circle cx="560" cy="204" r="1"/></g>
+  </svg></div>`;
+}
+function paintDesert() {
+  const svg = $('.dz-svg'); if (!svg) return;
+  const { t } = jeddahNow();
+  const arc = (p) => ({ x: 40 + p * 620, y: 150 - Math.sin(p * Math.PI) * 120 });
+  const sun = arc(Math.min(1, Math.max(0, (t - 6) / 12.5)));
+  const moon = arc(Math.min(1, Math.max(0, (t >= 18.5 ? t - 18.5 : t + 5.5) / 11.5)));
+  $('.dz-sun', svg).setAttribute('transform', `translate(${sun.x} ${sun.y})`);
+  $('.dz-moon', svg).setAttribute('transform', `translate(${moon.x} ${moon.y})`);
+  svg.dataset.night = t < 5.75 || t >= 18.75 ? '1' : '0';
+  svg.dataset.glow = (t >= 5.5 && t < 7.5) || (t >= 16.5 && t < 19.25) ? '1' : '0';
 }
 
 // ---------- login page decoration ----------
