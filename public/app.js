@@ -388,7 +388,7 @@ function route() {
   const [p, id] = h.split('/');
   closeModal();
   const pages = { dashboard: pageDashboard, new: () => pageNewOrder(), orders: () => (id ? pageOrder(Number(id)) : pageOrders()), edit: () => pageNewOrder(Number(id)),
-    catalog: pageCatalog, suppliers: pageSuppliers, reports: pageReports, settings: () => pageSettings(id), more: pageMore };
+    catalog: pageCatalog, suppliers: pageSuppliers, reports: pageReports, settings: () => pageSettings(id), more: pageMore, 'from-stock': pageFromStock };
   (pages[p] || pageDashboard)();
 }
 
@@ -1071,6 +1071,161 @@ function placeOrder(btn) {
   });
 }
 
+// ================= LINK WITH THE STOCK CHECK WEBSITE =================
+// Stock check (the-plane-stock.pages.dev) → "Send to OrderEase" opens #/from-stock?d=… with the items below par.
+// Here each stock item is matched to a catalog product (remembered for next time) and one order per supplier is made.
+// When an order is received, "Add to Stock check" sends the amounts back as Delivery (nothing is saved there until someone taps Save).
+const STOCK_URL = 'https://the-plane-stock.pages.dev';
+const STORE_NAME = { plane: 'The Plane', kitchen: 'Daily Edition' };
+const restForStore = (store) => activeRest().find((r) => (store === 'plane' ? /plane/i : /daily|edition/i).test(r.name));
+const storeForRest = (r) => (!r ? null : /plane/i.test(r.name) ? 'plane' : /daily|edition/i.test(r.name) ? 'kitchen' : null);
+const b64uEnc = (o) => btoa(unescape(encodeURIComponent(JSON.stringify(o)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const b64uDec = (t) => JSON.parse(decodeURIComponent(escape(atob(t.replace(/-/g, '+').replace(/_/g, '/')))));
+// "4 x 2.27 kg" → { amt: 9080, dim: 'mass' } (grams / ml / pieces)
+function measure(txt) {
+  const t = String(txt || '').toLowerCase().replace(',', '.');
+  const m = t.match(/(?:(\d+(?:\.\d+)?)\s*[x×*]\s*)?(\d+(?:\.\d+)?)\s*(kg|g|gm|gr|l|lt|ltr|litre|liter|ml|pcs|pc|pieces|piece)\b/);
+  if (!m) { const n = t.match(/^(\d+)\s*(?:x|×)?\s*$/) || t.match(/(\d+)\s*(?:pcs|pc|pieces)/); return n ? { amt: +n[1], dim: 'count' } : null; }
+  const k = m[1] ? +m[1] : 1, v = +m[2], u = m[3];
+  if (u === 'kg') return { amt: k * v * 1000, dim: 'mass' };
+  if (/^g/.test(u)) return { amt: k * v, dim: 'mass' };
+  if (/^(l|lt|ltr|litre|liter)$/.test(u)) return { amt: k * v * 1000, dim: 'vol' };
+  if (u === 'ml') return { amt: k * v, dim: 'vol' };
+  return { amt: k * v, dim: 'count' };
+}
+function unitBase(u) {
+  u = String(u || '').toLowerCase();
+  if (u === 'kg') return { f: 1000, dim: 'mass' }; if (u === 'g') return { f: 1, dim: 'mass' };
+  if (u === 'l') return { f: 1000, dim: 'vol' }; if (u === 'ml') return { f: 1, dim: 'vol' };
+  return { f: 1, dim: 'count' };
+}
+function guessPerPack(product, stockUnit) {
+  const p = measure(product.pack), s = unitBase(stockUnit);
+  // grams and millilitres are treated as about the same (sauces, milk…); the Admin can change the number
+  const same = p && (p.dim === s.dim || (p.dim !== 'count' && s.dim !== 'count'));
+  if (same && p.amt > 0) return Math.round((p.amt / s.f) * 1000) / 1000;
+  return null;
+}
+function nameScore(a, b) {
+  const w = (x) => String(x).toLowerCase().replace(/[^a-z0-9\u0600-\u06ff ]/g, ' ').split(/\s+/).filter((t) => t.length > 2);
+  const A = w(a), B = new Set(w(b)); if (!A.length) return 0;
+  return A.filter((t) => B.has(t) || [...B].some((x) => x.startsWith(t) || t.startsWith(x))).length / A.length;
+}
+async function pageFromStock() {
+  const main = shell('new', loading());
+  let data;
+  try { data = b64uDec(new URLSearchParams(location.hash.split('?')[1] || '').get('d') || ''); } catch { data = null; }
+  if (!data || !Array.isArray(data.items) || !['plane', 'kitchen'].includes(data.store)) {
+    main.innerHTML = pageHead('From Stock check', 'This link has no order list in it.', '', 'Stock check') + `<div class="card card-pad">Open the Stock check website, tap <b>🛒 Order list</b>, then <b>Send to OrderEase</b>.</div>`;
+    return;
+  }
+  const items = data.items.slice(0, 200).map((x) => ({ id: Number(x.id), name: String(x.name || '').slice(0, 120), unit: String(x.unit || '').slice(0, 20), cat: String(x.cat || '').slice(0, 60), need: Math.max(0, Number(x.qty) || 0) })).filter((x) => x.id > 0 && x.need > 0);
+  let products = [], links = [];
+  try { [products, links] = await Promise.all([api('products').then((r) => r.products), api('stock-links?store=' + data.store).then((r) => r.links)]); }
+  catch (e) { main.innerHTML = `<div class="form-error">${esc(e.message)}</div>`; return; }
+  const linkOf = Object.fromEntries(links.map((l) => [l.stock_id, l]));
+  const sups = activeSup();
+  const rest = restForStore(data.store);
+  const rows = items.map((it) => {
+    const l = linkOf[it.id];
+    let pid = l && products.some((p) => p.id === l.product_id) ? l.product_id : null;
+    if (!pid) { const best = products.map((p) => [nameScore(it.name, p.name), p]).sort((a, b) => b[0] - a[0])[0]; if (best && best[0] >= 0.5) pid = best[1].id; }
+    const prod = products.find((p) => p.id === pid);
+    const per = l && l.product_id === pid && l.per_pack ? l.per_pack : prod ? guessPerPack(prod, it.unit) : null;
+    return { ...it, pid, per, on: !!pid, saved: !!(l && l.product_id === pid) };
+  });
+  const qtyFor = (r) => (r.per ? Math.max(1, Math.ceil((r.need / r.per) - 1e-9)) : 1);
+  rows.forEach((r) => { r.qty = qtyFor(r); });
+  const prodOpts = (sel) => `<option value="">— Choose the product —</option>` + sups.map((s) => {
+    const ps = products.filter((p) => p.supplier_id === s.id); if (!ps.length) return '';
+    return `<optgroup label="${esc(s.name)}">${ps.map((p) => `<option value="${p.id}" ${p.id === sel ? 'selected' : ''}>${esc(p.name)}${p.pack ? ' · ' + esc(p.pack) : ''}${p.code ? ' · ' + esc(p.code) : ''}</option>`).join('')}</optgroup>`;
+  }).join('');
+  const deliver = addDays(today(), 1);
+  main.innerHTML = pageHead('From Stock check', `${esc(STORE_NAME[data.store])} · order list of ${fmtDate(data.date)} · ${rows.length} items below par`, '', 'Stock check → OrderEase', { kind: 'cart', icon: 'cart' }) + `
+    <div class="card card-pad stack">
+      <div class="grid2"><div class="field" style="margin:0"><label>Restaurant</label><select class="input" id="fs-r">${activeRest().map((r) => `<option value="${r.id}" ${rest && r.id === rest.id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select></div>
+        <div class="field" style="margin:0"><label>Delivery date</label><input class="input" type="date" id="fs-d" value="${deliver}"></div></div>
+      <p class="hint" style="margin:0">Choose the catalog product for each item once. OrderEase remembers it next time. <b>1 pack =</b> how many ${'<i>stock units</i>'} are in one pack, so the amount is worked out for you.</p>
+      <div class="table-wrap"><table class="t fs-t"><thead><tr><th></th><th>Stock item</th><th class="r">Need</th><th>Product (supplier)</th><th class="r">1 pack =</th><th class="r">Order</th></tr></thead><tbody>
+        ${rows.map((r, i) => `<tr data-i="${i}"><td><input type="checkbox" class="fs-on" ${r.on ? 'checked' : ''}></td>
+          <td><b>${esc(r.name)}</b><div class="muted" style="font-size:12px">${esc(r.cat)}${r.saved ? ' · <span class="fs-saved">linked ✓</span>' : ''}</div></td>
+          <td class="r num"><b>${fmtQty(r.need)}</b> ${esc(r.unit)}</td>
+          <td><select class="input fs-p">${prodOpts(r.pid)}</select></td>
+          <td class="r"><input class="input fs-per" inputmode="decimal" value="${r.per ?? ''}" placeholder="?" style="width:84px;text-align:right"> <span class="muted">${esc(r.unit)}</span></td>
+          <td class="r"><input class="input fs-q" inputmode="decimal" value="${r.qty}" style="width:70px;text-align:right"> <span class="muted fs-u"></span></td></tr>`).join('')}
+      </tbody></table></div>
+      <div id="fs-sum" class="hint"></div>
+      <div class="actions"><button class="btn crema" id="fs-go">${ic('check')} Create orders</button><a class="btn ghost" href="#/dashboard">Cancel</a></div>
+    </div>`;
+  const tr = (i) => $(`tr[data-i="${i}"]`, main);
+  const pu = (r) => { const p = products.find((x) => x.id === r.pid); return p ? (p.unit || 'pack') : ''; };
+  const markPer = () => rows.forEach((r, i) => { $('.fs-per', tr(i)).classList.toggle('need', r.on && !!r.pid && !r.per); });
+  const summary = () => {
+    markPer();
+    const by = {}; rows.filter((r) => r.on && r.pid && r.qty > 0).forEach((r) => { const p = products.find((x) => x.id === r.pid); by[p.supplier_id] = (by[p.supplier_id] || 0) + 1; });
+    const parts = Object.entries(by).map(([sid, n]) => `<b>${esc(supById(sid).name)}</b> (${n} item${n > 1 ? 's' : ''})`);
+    $('#fs-sum', main).innerHTML = parts.length ? `Will create ${parts.length} order${parts.length > 1 ? 's' : ''}: ${parts.join(', ')}. You can send each one on WhatsApp after.` : 'Tick items and choose a product to create orders.';
+    rows.forEach((r, i) => { $('.fs-u', tr(i)).textContent = pu(r); });
+  };
+  rows.forEach((r, i) => {
+    const t = tr(i);
+    $('.fs-on', t).onchange = (e) => { r.on = e.target.checked; summary(); };
+    $('.fs-p', t).onchange = (e) => {
+      r.pid = Number(e.target.value) || null; r.on = !!r.pid; $('.fs-on', t).checked = r.on;
+      const p = products.find((x) => x.id === r.pid); r.per = p ? guessPerPack(p, r.unit) : null; $('.fs-per', t).value = r.per ?? '';
+      r.qty = qtyFor(r); $('.fs-q', t).value = r.qty; summary();
+    };
+    $('.fs-per', t).oninput = (e) => { const v = Number(e.target.value.replace(',', '.')); r.per = v > 0 ? v : null; r.qty = qtyFor(r); $('.fs-q', t).value = r.qty; };
+    $('.fs-q', t).oninput = (e) => { r.qty = Math.max(0, Number(e.target.value.replace(',', '.')) || 0); summary(); };
+  });
+  summary();
+  $('#fs-go', main).onclick = () => act($('#fs-go', main), async () => {
+    const rid = Number($('#fs-r', main).value), dd = $('#fs-d', main).value;
+    const pick = rows.filter((r) => r.on && r.pid && r.qty > 0);
+    if (!pick.length) throw new Error('Tick at least one item and choose its product.');
+    // remember the links (also for items not ordered this time, if a product was chosen)
+    await api('stock-links', { method: 'PUT', body: { store: data.store, links: rows.filter((r) => r.pid).map((r) => ({ stock_id: r.id, stock_name: r.name, stock_unit: r.unit, product_id: r.pid, per_pack: r.per })) } });
+    const bySup = {};
+    pick.forEach((r) => { const p = products.find((x) => x.id === r.pid); (bySup[p.supplier_id] = bySup[p.supplier_id] || []).push({ product_id: p.id, code: p.code, name: p.name, pack: p.pack, unit: p.unit, price: p.price, qty: r.qty }); });
+    const made = [];
+    for (const [sid, its] of Object.entries(bySup)) {
+      const r = await api('orders', { method: 'POST', body: { restaurant_id: rid, supplier_id: Number(sid), order_date: today(), delivery_date: dd, note: `From Stock check ${fmtDate(data.date)} (${STORE_NAME[data.store]})`, items: its } });
+      made.push({ id: r.id, no: r.order_no, sup: supById(sid).name, n: its.length });
+    }
+    history.replaceState(null, '', '#/from-stock');
+    main.innerHTML = pageHead('Orders created ✓', `${made.length} order${made.length > 1 ? 's' : ''} from the Stock check order list`, '', 'Stock check → OrderEase', { kind: 'orders', icon: 'list' }) + `
+      <div class="card card-pad stack">${made.map((m) => `<a class="fs-made" href="#/orders/${m.id}"><span class="mono">${esc(m.no)}</span><b>${esc(m.sup)}</b><span class="muted">${m.n} item${m.n > 1 ? 's' : ''}</span><span>Open & send →</span></a>`).join('')}
+        <p class="hint" style="margin:0">Open each order to send it on WhatsApp. When the goods arrive, tap <b>Mark as received</b>, then <b>Add to Stock check</b> to put the amounts in the Delivery column.</p></div>`;
+    toast(`${made.length} order${made.length > 1 ? 's' : ''} created ✓`);
+  });
+}
+// Received order → Stock check Delivery (opens the Stock check page with the amounts filled in, not saved)
+async function sendToStock(o, items) {
+  const store = storeForRest(restById(o.restaurant_id) || { name: o.restaurant });
+  if (!store) return toast('This restaurant has no Stock check page.', true);
+  const { links } = await api('stock-links?store=' + store);
+  const byProd = {}; links.forEach((l) => { (byProd[l.product_id] = byProd[l.product_id] || []).push(l); });
+  const out = [], miss = [];
+  const noPack = [];
+  items.forEach((it) => {
+    const l = it.product_id && byProd[it.product_id] && byProd[it.product_id][0];
+    if (!l) { miss.push(it.name); return; }
+    if (!l.per_pack) noPack.push(l.stock_name || it.name);
+    out.push({ id: l.stock_id, name: l.stock_name, unit: l.stock_unit, qty: Math.round(it.qty * (l.per_pack || 1) * 1000) / 1000 });
+  });
+  if (!out.length) return modal({ title: 'Not linked yet', body: `<p>None of these items are linked to a Stock check item yet.</p><p class="hint">Links are made when you create orders from the Stock check <b>🛒 Order list → Send to OrderEase</b>. After that, received orders can be added to Stock check in one tap.</p>`, foot: '<button class="btn" data-close>OK</button>' });
+  const day = o.received_at ? new Date(o.received_at * 1000).toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' }) : today();
+  const d = b64uEnc({ v: 1, src: 'orderease', order: o.order_no, store, date: day, items: out });
+  const go = () => { window.open(`${STOCK_URL}/#/stock/${store}?date=${day}&delivery=${d}`, '_blank', 'noopener'); };
+  if (miss.length || noPack.length) {
+    const m = modal({ title: 'Add to Stock check', body: `<p><b>${out.length}</b> item${out.length > 1 ? 's' : ''} will go to the Delivery column of <b>${STORE_NAME[store]}</b> for ${fmtDate(day)}.</p>
+      ${noPack.length ? `<p class="hint" style="color:var(--warn)">Pack size not set, so the number of packs is sent as it is: ${noPack.map(esc).join(', ')}. Check these on the Stock check page.</p>` : ''}
+      ${miss.length ? `<p class="hint">Not linked, so not included: ${miss.map(esc).join(', ')}.</p>` : ''}`,
+      foot: '<button class="btn ghost" data-close>Cancel</button><button class="btn" id="ts-go">Open Stock check</button>' });
+    $('#ts-go', m).onclick = () => { closeModal(); go(); };
+  } else go();
+}
+
 // ================= ORDER DETAIL =================
 function waText(o, items) {
   const st = state.boot.settings;
@@ -1109,6 +1264,7 @@ async function pageOrder(id) {
         </div>
         <div class="actions no-print">
           ${o.status === 'ordered' ? `<button class="btn" id="rcv">${ic('check')} Mark as received</button>` : ''}
+          ${o.status === 'received' && storeForRest(restById(o.restaurant_id) || { name: o.restaurant }) ? `<button class="btn crema" id="tostock">📦 Add to Stock check</button>` : ''}
           ${canEdit ? `<a class="btn ghost" href="#/edit/${o.id}">${ic('edit')} Edit</a>` : ''}
           <a class="btn ghost" href="#/new?again=${o.id}">${ic('again')} Order again</a>
           ${o.status === 'ordered' ? `<button class="btn danger" id="cnl">${ic('x')} Cancel order</button>` : ''}
@@ -1141,6 +1297,7 @@ async function pageOrder(id) {
   const setStatus = (s, label) => act(null, async () => { await api(`orders/${o.id}/status`, { method: 'POST', body: { status: s } }); toast(label); pageOrder(o.id); });
   if ($('#rcv')) $('#rcv').onclick = () => { confetti($('#rcv')); setStatus('received', 'Marked as received. ✓'); };
   if ($('#cnl')) $('#cnl').onclick = async () => { if (await confirmBox('Cancel this order?', 'It stays in the history but is left out of reports.', 'Cancel order', true)) setStatus('cancelled', 'Order cancelled.'); };
+  if ($('#tostock')) $('#tostock').onclick = () => act($('#tostock'), () => sendToStock(o, items));
   if ($('#reopen')) $('#reopen').onclick = () => setStatus('ordered', 'Order is waiting for delivery again.');
   if ($('#del')) $('#del').onclick = async () => {
     if (await confirmBox('Delete this order for good?', 'This cannot be undone. Use “Cancel order” if you only want to keep it out of reports.', 'Delete', true)) {

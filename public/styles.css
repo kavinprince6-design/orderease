@@ -903,3 +903,11 @@ a.kpi:hover, .rest:hover, .sup:hover, .tile:hover { transform: translateY(-3px);
 @media (max-width: 900px) { .desert { height: 150px; bottom: 0; } }
 .auth-brand > div.tagline { margin-bottom: 190px; }
 @media (max-width: 900px) { .auth-brand > div.tagline { margin-bottom: 110px; } }
+
+/* From Stock check */
+.fs-t td { vertical-align: middle; }
+.fs-t .fs-p { min-width: 240px; max-width: 360px; }
+.fs-saved { color: #2E8B57; font-weight: 700; }
+.fs-made { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; padding: 12px 14px; border: 1px solid var(--line, #e5ddd2); border-radius: 12px; text-decoration: none; color: inherit; }
+.fs-made span:last-child { margin-left: auto; font-weight: 700; }
+.fs-per.need { border-color: #E0A43A; background: #FFF7E6; }

@@ -79,6 +79,7 @@ async function audit(env, username, action, detail, ref = null, rid = null) {
 }
 // Website updates shown in the bell ("What's new"). Add a new entry at the top for each release.
 const RELEASES = [
+  { v: 8, ts: 1793208199, title: 'Connected with Stock check', text: 'In the Stock check website, 🛒 Order list → 🚚 Send to OrderEase opens a page here: choose the product for each item once (remembered next time) and Create orders, one per supplier. When an order is received, 📦 Add to Stock check puts the amounts in the Delivery column there.' },
   { v: 7, ts: 1793118600, title: 'Arabic coffee when you change page', text: 'Changing page now shows a small dallah pouring Arabic coffee into a finjan, with a gold star pattern sweeping across the top. Turn it off in My account if you prefer.' },
   { v: 6, ts: 1793116800, title: 'Camel rider on the login page', text: 'The login page now has a desert with mountains, dunes and a camel rider crossing slowly. The sky follows the real time in Jeddah: sun by day, moon and stars at night.' },
   { v: 5, ts: 1793113200, title: 'Updates by itself', text: 'When a new version of OrderEase is published, every open screen refreshes by itself and stays on the same page. If you are in the middle of an order or typing, it waits until you finish.' },
@@ -609,6 +610,25 @@ export async function onRequest(context) {
         await audit(env, user.username, 'product_deleted', p && p.name);
         return json({ ok: true, deleted: true });
       }
+    }
+
+    // ----- links with the Stock check website (the-plane-stock): which catalog product each stock item is ordered as -----
+    if (a === 'stock-links') {
+      const store = ['plane', 'kitchen'].includes(url.searchParams.get('store') || body?.store) ? (url.searchParams.get('store') || body.store) : null;
+      if (!store) return err('store must be plane or kitchen');
+      if (method === 'GET') {
+        const { results } = await env.DB.prepare('SELECT stock_id, stock_name, stock_unit, product_id, per_pack FROM stock_links WHERE store = ?').bind(store).all();
+        return json({ links: results });
+      }
+      if (method === 'PUT') {
+        const list = (Array.isArray(body.links) ? body.links : []).slice(0, 300).filter((l) => Number(l.stock_id) > 0 && Number(l.product_id) > 0);
+        const st = list.map((l) => env.DB.prepare(`INSERT INTO stock_links (store, stock_id, stock_name, stock_unit, product_id, per_pack, updated_at) VALUES (?, ?, ?, ?, ?, ?, unixepoch())
+          ON CONFLICT(store, stock_id) DO UPDATE SET stock_name = excluded.stock_name, stock_unit = excluded.stock_unit, product_id = excluded.product_id, per_pack = excluded.per_pack, updated_at = excluded.updated_at`)
+          .bind(store, Number(l.stock_id), str(l.stock_name, 120) || null, str(l.stock_unit, 20) || null, Number(l.product_id), Number(l.per_pack) > 0 ? Number(l.per_pack) : null));
+        for (let i = 0; i < st.length; i += 80) await env.DB.batch(st.slice(i, i + 80));
+        return json({ ok: true, saved: st.length });
+      }
+      return err('Not found', 404);
     }
 
     // ----- orders -----
