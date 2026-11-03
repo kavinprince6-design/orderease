@@ -388,7 +388,7 @@ function route() {
   const [p, id] = h.split('/');
   closeModal();
   const pages = { dashboard: pageDashboard, new: () => pageNewOrder(), orders: () => (id ? pageOrder(Number(id)) : pageOrders()), edit: () => pageNewOrder(Number(id)),
-    catalog: pageCatalog, suppliers: pageSuppliers, reports: pageReports, settings: () => pageSettings(id), more: pageMore, 'from-stock': pageFromStock };
+    catalog: pageCatalog, suppliers: pageSuppliers, reports: pageReports, settings: () => pageSettings(id), more: pageMore, 'from-stock': pageFromStock, 'to-chef': pageToChef };
   (pages[p] || pageDashboard)();
 }
 
@@ -1111,6 +1111,20 @@ function nameScore(a, b) {
   const A = w(a), B = new Set(w(b)); if (!A.length) return 0;
   return A.filter((t) => B.has(t) || [...B].some((x) => x.startsWith(t) || t.startsWith(x))).length / A.length;
 }
+// Chef Studio (Michael's chef portfolio site): sends catalog prices there, one click, after a person checks the page.
+const CHEF_URL = 'https://michael-yerro.pages.dev';
+async function pageToChef() {
+  const main = shell('catalog', loading());
+  let products = [];
+  try { products = (await api('products')).products; } catch (e) { main.innerHTML = `<div class="form-error">${esc(e.message)}</div>`; return; }
+  const supName = Object.fromEntries(activeSup().map((s) => [s.id, s.name]));
+  const list = products.filter((p) => p.price > 0).slice(0, 1500).map((p) => ({ code: p.code || '', name: p.name, pack: p.pack || '', unit: p.unit || '', price: p.price, supplier: supName[p.supplier_id] || '' }));
+  main.innerHTML = pageHead('Send prices to Chef Studio', 'Chef Studio will show each change so you can check it before anything updates.', '', 'Connected sites')
+    + `<div class="card card-pad"><p><b>${list.length}</b> products have a price. Products without a price are left out.</p><button class="btn" id="toChef">Send to Chef Studio</button></div>`;
+  document.getElementById('toChef').addEventListener('click', () => {
+    location.href = `${CHEF_URL}/#s-import?d=${b64uEnc({ v: 1, src: 'orderease', products: list })}`;
+  });
+}
 async function pageFromStock() {
   const main = shell('new', loading());
   let data;
@@ -1141,7 +1155,8 @@ async function pageFromStock() {
     return `<optgroup label="${esc(s.name)}">${ps.map((p) => `<option value="${p.id}" ${p.id === sel ? 'selected' : ''}>${esc(p.name)}${p.pack ? ' · ' + esc(p.pack) : ''}${p.code ? ' · ' + esc(p.code) : ''}</option>`).join('')}</optgroup>`;
   }).join('');
   const deliver = addDays(today(), 1);
-  main.innerHTML = pageHead('From Stock check', `${esc(STORE_NAME[data.store])} · order list of ${fmtDate(data.date)} · ${rows.length} items below par`, '', 'Stock check → OrderEase', { kind: 'cart', icon: 'cart' }) + `
+  const fromChef = data.src === 'chef';
+  main.innerHTML = pageHead(fromChef ? 'From Chef Studio' : 'From Stock check', `${esc(STORE_NAME[data.store])} · order list of ${fmtDate(data.date)} · ${rows.length} items${fromChef ? '' : ' below par'}`, '', fromChef ? 'Chef Studio → OrderEase' : 'Stock check → OrderEase', { kind: 'cart', icon: 'cart' }) + `
     <div class="card card-pad stack">
       <div class="grid2"><div class="field" style="margin:0"><label>Restaurant</label><select class="input" id="fs-r">${activeRest().map((r) => `<option value="${r.id}" ${rest && r.id === rest.id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select></div>
         <div class="field" style="margin:0"><label>Delivery date</label><input class="input" type="date" id="fs-d" value="${deliver}"></div></div>
@@ -1204,7 +1219,8 @@ async function sendToStock(o, items) {
   const store = storeForRest(restById(o.restaurant_id) || { name: o.restaurant });
   if (!store) return toast('This restaurant has no Stock check page.', true);
   const { links } = await api('stock-links?store=' + store);
-  const byProd = {}; links.forEach((l) => { (byProd[l.product_id] = byProd[l.product_id] || []).push(l); });
+  // Numbers from 1,000,000,000 are Chef Studio ingredients, not Stock check items
+  const byProd = {}; links.filter((l) => l.stock_id < 1000000000).forEach((l) => { (byProd[l.product_id] = byProd[l.product_id] || []).push(l); });
   const out = [], miss = [];
   const noPack = [];
   items.forEach((it) => {

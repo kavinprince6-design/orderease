@@ -79,6 +79,7 @@ async function audit(env, username, action, detail, ref = null, rid = null) {
 }
 // Website updates shown in the bell ("What's new"). Add a new entry at the top for each release.
 const RELEASES = [
+  { v: 9, ts: 1793700000, title: 'Connected with Chef Studio', text: 'Chef Studio can now bring in catalog prices from here, and send a recipe or set menu shopping list to New order. Nothing changes until someone checks it and confirms.' },
   { v: 8, ts: 1793208199, title: 'Connected with Stock check', text: 'In the Stock check website, 🛒 Order list → 🚚 Send to OrderEase opens a page here: choose the product for each item once (remembered next time) and Create orders, one per supplier. When an order is received, 📦 Add to Stock check puts the amounts in the Delivery column there.' },
   { v: 7, ts: 1793118600, title: 'Arabic coffee when you change page', text: 'Changing page now shows a small dallah pouring Arabic coffee into a finjan, with a gold star pattern sweeping across the top. Turn it off in My account if you prefer.' },
   { v: 6, ts: 1793116800, title: 'Camel rider on the login page', text: 'The login page now has a desert with mountains, dunes and a camel rider crossing slowly. The sky follows the real time in Jeddah: sun by day, moon and stars at night.' },
